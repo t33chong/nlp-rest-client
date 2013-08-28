@@ -13,6 +13,9 @@ api = restful.Api(app)
 
 XML_PATH = '/data/nlp/'
 
+# TODO: use load balancer, not a partiucular query slave
+SOLR_URL = 'http://search-s10:8983'
+
 class ParsedXmlService(restful.Resource):
     def get(self, doc_id):
         response = {}
@@ -39,21 +42,32 @@ class AllNounPhrasesDemo(restful.Resource):
 
 class SolrPage(restful.Resource):
     def get(self, doc_id):
-        return {doc_id: requests.get('http://search:8983/solr/main/select/', params={'q':'id:%s' % doc_id}
+        return {doc_id: requests.get(SOLR_URL+'/solr/main/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
 
 class SolrWiki(restful.Resource):
     def get(self, doc_id):
-        return {doc_id: requests.get('http://search:8983/solr/xwiki/select/', params={'q':'id:%s' % doc_id}
+        return {doc_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
 
 class Sentiment(restful.Resource):
     def get(self, doc_id):
-        blob = TextBlob(SolrPage().get(doc_id)['html_en'])
+        blob = TextBlob(SolrPage().get(doc_id).get(doc_id, {}).get('html_en', ''))
         sentiments = [s.sentiment for s in blob.sentences]
-        polarity = sum([s[0] for s in sentiments])
-        subjectivity = sum([s[1] for s in sentiments])
-        return {doc_id: { 'polarity':polarity, 'subjectivity':subjectivity}}
+        polarities = [s[0] for s in sentiments]
+        subjectivities = [s[1] for s in sentiments]
+        sentimentData = {}
+        sentimentData['polarity_avg'] = sum(polarities)/float(len(sentiments))
+        sentimentData['polarity_max'] = max(polarities)
+        sentimentData['polarity_min'] = min(polarities)
+        sentimentData['polarity_max_sent'] = str(blob.sentences[polarities.index(sentimentData['polarity_max'])])
+        sentimentData['polarity_min_sent'] = str(blob.sentences[polarities.index(sentimentData['polarity_min'])])
+        sentimentData['subjectivity_avg'] = sum(subjectivities)/float(len(sentiments))
+        sentimentData['subjectivity_max'] = max(subjectivities)
+        sentimentData['subjectivity_min'] = min(subjectivities)
+        sentimentData['subjectivity_max_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_max'])])
+        sentimentData['subjectivity_min_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_min'])])
+        return {doc_id: sentimentData}
         
 
 api.add_resource(ParsedXmlService, '/doc/<string:doc_id>/xml')
