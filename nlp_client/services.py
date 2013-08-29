@@ -251,9 +251,21 @@ class EntityCountsService(restful.Resource):
         :param doc_id: the id of the article
         '''
         confirmed = EntitiesService().get(doc_id)
-        coreferences = CoreferenceCountService().get(doc_id)
+        coreferences = CoreferenceCountsService().get(doc_id).get(doc_id)
+        
+        counts ={}
+        coref_mention_keys = coreferences['paraphrases'].keys()
+        coref_mention_values = [item for sublist in coreferences['paraphrases'].values() for item in sublist]
+        for val in confirmed.values():
+            if val in coref_mention_keys:
+                counts[val] = len(coreferences['paraphrases'][val])
+            elif val in coref_mention_values:
+                for key in coref_mention_keys:
+                    if val in coreferences['paraphrases'][key]:
+                        counts[val] = len(coreferences['paraphrases'][key])
+                        break
 
-        return {'confirmed':confirmed, 'coreferences':coreferences}
+        return counts
         
 
 
