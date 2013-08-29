@@ -206,7 +206,7 @@ class EntityConfirmationService():
         def filterfn(current): return current not in existing_entities.keys() and current not in existing_entities.values()
 
         unknown_entities = filter(filterfn, entities)
-        print existing_entities, unknown_entities
+
         params = {
             'controller': 'WikiaSearchController',
                 'method': 'resolveEntities',
@@ -230,7 +230,7 @@ class EntitiesService(restful.Resource):
         wid = doc_id.split('_')[0]
         wiki_url = SolrWikiService().get(wid).get(wid)['url']
 
-        nps = AllNounPhrasesService().get(doc_id).get(doc_id)
+        nps = [sanitizePhrase(phrase) for phrase in AllNounPhrasesService().get(doc_id).get(doc_id)]
         if not nps:
             return {'status':400, 'message': 'Document not found'}
 
@@ -242,7 +242,20 @@ class EntitiesService(restful.Resource):
 
         return confirmations
 
+class EntityCountsService(restful.Resource):
+    
+    ''' Counts the entities using coreference counts in a given document '''
+
+    def get(self, doc_id):
+        ''' Given a doc id, accesses entities and then cross-references entity parses 
+        :param doc_id: the id of the article
+        '''
+        confirmed = EntitiesService().get(doc_id)
+        coreferences = CoreferenceCountService().get(doc_id)
+
+        return {'confirmed':confirmed, 'coreferences':coreferences}
         
+
 
 class TopEntitiesService(restful.Resource):
 
