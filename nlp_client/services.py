@@ -1,11 +1,12 @@
 from flask.ext import restful
 from text.blob import TextBlob
 from nlp_client.services import *
-from os import path
+from os import path, listdir
 from gzip import open as gzopen
 import nltk
 import xmltodict
 import requests
+import re
 
 
 '''
@@ -18,6 +19,8 @@ XML_PATH = '/data/xml/'
 # TODO: use load balancer, not a partiucular query slave
 SOLR_URL = 'http://search-s10:8983'
 
+MEMOIZED_WIKIS = {}
+MEMOIZED_ENTITIES = {}
 
 class ParsedXmlService(restful.Resource):
 
@@ -99,9 +102,9 @@ class CoreferenceCountsService(restful.Resource):
 
 
 
-class AllNounPhrasesDemoService(restful.Resource):
+class AllNounPhrasesService(restful.Resource):
 
-    ''' Demo read-only service that gives all noun phrases for a document
+    ''' Read-only service that gives all noun phrases for a document
     TextBlob could do this too
     Uses ParsedJsonService
     '''
@@ -131,6 +134,7 @@ class SolrPageService(restful.Resource):
         return {doc_id: requests.get(SOLR_URL+'/solr/main/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
 
+
 class SolrWikiService(restful.Resource):
 
     ''' Read-only service that accesses a single wiki-level document from Solr '''
@@ -139,8 +143,16 @@ class SolrWikiService(restful.Resource):
         ''' Get wiki from solr for a document id
         :param doc_id: the id of the document in Solr
         '''
-        return {doc_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
+        global MEMOIZED_WIKIS
+        if MEMOIZED_WIKIS.get(doc_id, None):
+            return {doc_id: MEMOIZED_WIKIS[doc_id]}
+
+        serviceResponse = {doc_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
+
+        MEMOIZED_WIKIS = dict(MEMOIZED_WIKIS.items() + serviceResponse.items())
+
+        return serviceResponse
 
 
 class SentimentService(restful.Resource):
@@ -169,3 +181,101 @@ class SentimentService(restful.Resource):
         sentimentData['subjectivity_max_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_max'])])
         sentimentData['subjectivity_min_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_min'])])
         return {doc_id: sentimentData}
+
+
+class EntityConfirmationService():
+
+    ''' 
+    Confirms an entity for a given wiki
+    Intentionally unexposed from REST endpoint (for now)
+    '''
+
+    def confirm(self, wiki_url, entities):
+        '''Given a wiki URL and a group of entities,
+        confirm the existence of these entities as titles via service.
+        :param wiki_url: the URL of the wiki
+        :param entities: a list of entities
+        '''
+        global MEMOIZED_ENTITIES
+        memo = MEMOIZED_ENTITIES.get(wiki_url, {})
+        memo_vals = memo.values()
+        memo_keys = memo.keys()
+        existing_entities = dict([(entity, entity) for entity in entities if entity in memo_vals] \
+                               + [(entity, memo[entity]) for entity in entities if entity in memo_keys])
+        
+        def filterfn(current): return current not in existing_entities.keys() and current not in existing_entities.values()
+
+        unknown_entities = filter(filterfn, entities)
+        print existing_entities, unknown_entities
+        params = {
+            'controller': 'WikiaSearchController',
+                'method': 'resolveEntities',
+              'entities': '|'.join(unknown_entities)
+        }
+
+        response = requests.get('%s/wikia.php' % wiki_url, params=params).json()
+        MEMOIZED_ENTITIES[wiki_url] = dict(memo.items() + response.items())
+
+        return dict(existing_entities.items() + response.items())
+
+class EntitiesService(restful.Resource):
+
+    ''' Identifies, confirms, and counts entities over a given page '''
+
+    def get(self, doc_id):
+        ''' Given an article id, accesses entities and confirms entities
+        :param doc_id: the id of the article document
+        '''
+
+        wid = doc_id.split('_')[0]
+        wiki_url = SolrWikiService().get(wid).get(wid)['url']
+
+        nps = AllNounPhrasesService().get(doc_id).get(doc_id)
+        if not nps:
+            return {'status':400, 'message': 'Document not found'}
+
+        confirmations = {}
+        for i in range(0, len(set(nps)), 10):
+            new_confirmations = EntityConfirmationService().confirm(wiki_url, nps[i:i+10])
+            confirmations = dict(confirmations.items() 
+                               + [item for item in new_confirmations.items() if item[1]])
+
+        return confirmations
+
+        
+
+class TopEntitiesService(restful.Resource):
+
+    ''' Aggregates entities over a wiki '''
+
+    def get(self, doc_id):
+        ''' Given a wiki doc id, iterates over all documents available.
+        For each noun phrase, we confirm whether there is a matching title.
+        We then cross-reference that noun phrase by mention count. 
+        :param doc_id: the id of the wiki
+        '''
+
+        wiki = SolrWikiService().get(doc_id).get(doc_id, None)
+        if not wiki:
+            return {'status':400, 'message':'Not Found'}
+
+        
+        xmlPath = '%s/%s/' % (XML_PATH, wiki['id'])
+        if not path.exists(xmlPath):
+            return {'status':500, 'message':'Wiki not yet processed'}
+
+        entitiesToCount = {}
+        confirm = EntityConfirmationService().get
+        for file in os.listdir(xmlPath):
+            pageid = file.split('.')[0]
+            docid = '%s_%s' % (wiki['id'], pageid)
+            corefs = CoreferencesCountService().get(docid).get(['docid'], None)
+            if not corefs:
+                continue
+            for name in corefs['paraphrases'].keys():
+                cands = set([sanitizeEntity(par) for par in corefs['paraphrases']['name']])
+                print confirm(wiki['url_s'], cands)
+
+def sanitizePhrase(phrase):
+    return re.sub(r" 's$", '', phrase)
+            
