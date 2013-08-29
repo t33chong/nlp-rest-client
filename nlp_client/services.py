@@ -8,22 +8,26 @@ import xmltodict
 import requests
 
 
-"""
+'''
 This module contains all services used in our RESTful client.
 At this point, they are all read-only, and only respond to GET.
-"""
+'''
 
 XML_PATH = '/data/xml/'
 
 # TODO: use load balancer, not a partiucular query slave
 SOLR_URL = 'http://search-s10:8983'
 
-"""
-Read-only service responsible for accessing XML from FS
-"""
+
 class ParsedXmlService(restful.Resource):
-    """ Return a response with the XML of the parsed text """
+
+    ''' Read-only service responsible for accessing XML from FS '''
+    
     def get(self, doc_id):
+        ''' Return a response with the XML of the parsed text 
+        :param doc_id: the id of the document in Solr
+        '''
+
         response = {}
         (wid, id) = doc_id.split('_')
         # currently using flat directory
@@ -41,26 +45,36 @@ class ParsedXmlService(restful.Resource):
             response['message'] = 'File not found for document %s' % doc_id
         return response
 
-"""
-Read-only service responsible for accessing XML and transforming it to JSON
-Uses the ParsedXmlService
-"""
+
 class ParsedJsonService(restful.Resource):
-    """ Returns document parse as JSON """
+
+    ''' Read-only service responsible for accessing XML and transforming it to JSON
+    Uses the ParsedXmlService
+    '''
+    
     def get(self, doc_id):
+        ''' Returns document parse as JSON 
+        :param doc_id: the id of the document in Solr
+        '''
+
         response = {}
         xmlResponse = ParsedXmlService().get(doc_id)
         if xmlResponse['status'] != 200:
             return xmlResponse
         return {'status':200, doc_id: xmltodict.parse(xmlResponse[doc_id])}
 
-"""
-Read-only service responsible for providing data on mention coreference
-Uses the ParsedJsonService
-"""
+
 class CoreferenceCountsService(restful.Resource):
-    """ Returns coreference and mentions for a document """
+
+    ''' Read-only service responsible for providing data on mention coreference
+    Uses the ParsedJsonService
+    '''
+
     def get(self, doc_id):
+        ''' Returns coreference and mentions for a document 
+        :param doc_id: the id of the document in Solr
+        '''
+        
         response = {}
         jsonResponse = ParsedJsonService().get(doc_id)
         if jsonResponse['status'] != 200:
@@ -84,14 +98,18 @@ class CoreferenceCountsService(restful.Resource):
         return {doc_id: {'mentionCounts':mentionCounts, 'paraphrases': representativeToMentions}}
 
 
-"""
-Demo read-only service that gives all noun phrases for a document
-TextBlob could do this too
-Uses ParsedJsonService
-"""
+
 class AllNounPhrasesDemoService(restful.Resource):
-    """ Get noun phrases for a document """
+
+    ''' Demo read-only service that gives all noun phrases for a document
+    TextBlob could do this too
+    Uses ParsedJsonService
+    '''
+    
     def get(self, doc_id):
+        ''' Get noun phrases for a document 
+        :param doc_id: the id of the document in Solr
+        '''
         jsonResponse = ParsedJsonService().get(doc_id)
         if jsonResponse['status'] != 200:
             return jsonResponse
@@ -101,31 +119,40 @@ class AllNounPhrasesDemoService(restful.Resource):
             nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence['parse']).subtrees() if f.node == u'NP']
         return {doc_id:nps}
 
-"""
-Read-only service that accesses a single page-level document from Solr
-"""
+
 class SolrPageService(restful.Resource):
-    """ Get page from solr for a document id """
+
+    ''' Read-only service that accesses a single page-level document from Solr '''
+    
     def get(self, doc_id):
+        ''' Get page from solr for a document id 
+        :param doc_id: the id of the document in Solr
+        '''
         return {doc_id: requests.get(SOLR_URL+'/solr/main/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
 
-"""
-Read-only service that accesses a single wiki-level document from Solr
-"""
 class SolrWikiService(restful.Resource):
-    """ Get wiki from solr for a document id """
+
+    ''' Read-only service that accesses a single wiki-level document from Solr '''
+    
     def get(self, doc_id):
+        ''' Get wiki from solr for a document id
+        :param doc_id: the id of the document in Solr
+        '''
         return {doc_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
 
-"""
-Read-only service that calculates the sentiment for a given piece of text
-Relies on SolrPageService
-"""
+
 class SentimentService(restful.Resource):
-    """ For a document id, get data on the text's polarity and subjectivity """
+
+    ''' Read-only service that calculates the sentiment for a given piece of text
+    Relies on SolrPageService
+    '''
+    
     def get(self, doc_id):
+        ''' For a document id, get data on the text's polarity and subjectivity 
+        :param doc_id: the id of the document in Solr
+        '''
         blob = TextBlob(SolrPageService().get(doc_id).get(doc_id, {}).get('html_en', ''))
         sentiments = [s.sentiment for s in blob.sentences]
         polarities = [s[0] for s in sentiments]
