@@ -2,14 +2,8 @@ from flask import Flask
 from flask.ext import restful
 from nlp_client.services import *
 
-
 app = Flask(__name__)
 api = restful.Api(app)
-
-XML_PATH = '/data/xml/'
-
-# TODO: use load balancer, not a partiucular query slave
-SOLR_URL = 'http://search-s10:8983'        
 
 api.add_resource(ParsedXmlService,          '/doc/<string:doc_id>/xml')
 api.add_resource(ParsedJsonService,         '/doc/<string:doc_id>/json')

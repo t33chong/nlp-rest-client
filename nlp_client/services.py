@@ -13,6 +13,10 @@ This module contains all services used in our RESTful client.
 At this point, they are all read-only, and only respond to GET.
 """
 
+XML_PATH = '/data/xml/'
+
+# TODO: use load balancer, not a partiucular query slave
+SOLR_URL = 'http://search-s10:8983'
 
 """
 Read-only service responsible for accessing XML from FS
@@ -22,7 +26,9 @@ class ParsedXmlService(restful.Resource):
     def get(self, doc_id):
         response = {}
         (wid, id) = doc_id.split('_')
-        xmlPath = '%s/%s/%s/%s.xml' % (XML_PATH, wid, id[0], doc_id)
+        # currently using flat directory
+        # xmlPath = '%s/%s/%s/%s.xml' % (XML_PATH, wid, id[0], doc_id)
+        xmlPath = '%s/%s/%s.xml' % (XML_PATH, wid, id)
         gzXmlPath = xmlPath + '.gz'
         if path.exists(gzXmlPath):
             response['status'] = 200
@@ -120,7 +126,7 @@ Relies on SolrPageService
 class SentimentService(restful.Resource):
     """ For a document id, get data on the text's polarity and subjectivity """
     def get(self, doc_id):
-        blob = TextBlob(SolrPage().get(doc_id).get(doc_id, {}).get('html_en', ''))
+        blob = TextBlob(SolrPageService().get(doc_id).get(doc_id, {}).get('html_en', ''))
         sentiments = [s.sentiment for s in blob.sentences]
         polarities = [s[0] for s in sentiments]
         subjectivities = [s[1] for s in sentiments]
