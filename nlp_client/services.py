@@ -33,9 +33,7 @@ class ParsedXmlService(restful.Resource):
 
         response = {}
         (wid, id) = doc_id.split('_')
-        # currently using flat directory
-        # xmlPath = '%s/%s/%s/%s.xml' % (XML_PATH, wid, id[0], doc_id)
-        xmlPath = '%s/%s/%s.xml' % (XML_PATH, wid, id)
+        xmlPath = '%s/%s/%s/%s.xml' % (XML_PATH, wid, id[0], id)
         gzXmlPath = xmlPath + '.gz'
         if path.exists(gzXmlPath):
             response['status'] = 200
