@@ -7,6 +7,7 @@ import nltk
 import xmltodict
 import requests
 import re
+import types
 
 
 '''
@@ -80,20 +81,25 @@ class CoreferenceCountsService(restful.Resource):
         jsonResponse = ParsedJsonService().get(doc_id)
         if jsonResponse['status'] != 200:
             return jsonResponse
-        coreferences = jsonResponse[doc_id]['root']['document']['coreference']['coreference']
-        sentences = jsonResponse[doc_id]['root']['document']['sentences']['sentence']
+
+        coreferences = asList(jsonResponse[doc_id]['root']['document'].get('coreference', {}).get('coreference', []))
+        sentences = asList(jsonResponse[doc_id]['root']['document'].get('sentences', {}).get('sentence', []))
+
         mentionCounts = {}
         representativeToMentions = {}
         for coref in coreferences:
             mentionString = ''
             mentionCount = 0
             mentions = []
-            for mention in coref['mention']:
+            for mention in coref.get('mention', []): #
                 mentionCount += 1
-                currentMentionString = " ".join([token['word'] for token in sentences[int(mention['sentence'])-1]['tokens']['token'][int(mention['start'])-1:int(mention['end'])-1]]) 
-                if mention.get('@representative', 'false') == 'true':
-                    mentionString = currentMentionString
-                mentions += [currentMentionString]
+                try:
+                    currentMentionString = " ".join([token['word'] for token in sentences[int(mention['sentence'])-1]['tokens']['token'][int(mention['start'])-1:int(mention['end'])-1]]) 
+                    if mention.get('@representative', 'false') == 'true':
+                        mentionString = currentMentionString
+                    mentions += [currentMentionString]
+                except TypeError: #unhashable type -- but why?
+                    continue
             mentionCounts[mentionString] = mentionCount
             representativeToMentions[mentionString] = mentions
         return {doc_id: {'mentionCounts':mentionCounts, 'paraphrases': representativeToMentions}}
@@ -116,8 +122,9 @@ class AllNounPhrasesService(restful.Resource):
             return jsonResponse
         dict = jsonResponse[doc_id]
         nps = []
-        for sentence in dict['root']['document']['sentences']['sentence']:
-            nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence['parse']).subtrees() if f.node == u'NP']
+        sentences = asList(dict['root']['document']['sentences']['sentence'])
+        for sentence in sentences:
+            nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == u'NP']
         return {doc_id:nps}
 
 
@@ -137,15 +144,15 @@ class SolrWikiService(restful.Resource):
 
     ''' Read-only service that accesses a single wiki-level document from Solr '''
     
-    def get(self, doc_id):
+    def get(self, wiki_id):
         ''' Get wiki from solr for a document id
         :param doc_id: the id of the document in Solr
         '''
         global MEMOIZED_WIKIS
-        if MEMOIZED_WIKIS.get(doc_id, None):
-            return {doc_id: MEMOIZED_WIKIS[doc_id]}
+        if MEMOIZED_WIKIS.get(wiki_id, None):
+            return {wiki_id: MEMOIZED_WIKIS[wiki_id]}
 
-        serviceResponse = {doc_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
+        serviceResponse = {wiki_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % wiki_id, 'wt':'json'}
 ).json().get('response', {}).get('docs',[None])[0]}
 
         MEMOIZED_WIKIS = dict(MEMOIZED_WIKIS.items() + serviceResponse.items())
@@ -263,42 +270,105 @@ class EntityCountsService(restful.Resource):
                         counts[val] = len(coreferences['paraphrases'][key])
                         break
 
-        return counts
-        
+        return {doc_id: counts, 'status': 200}
+
 
 
 class TopEntitiesService(restful.Resource):
 
     ''' Aggregates entities over a wiki '''
 
-    def get(self, doc_id):
+    def get(self, wiki_id):
+
         ''' Given a wiki doc id, iterates over all documents available.
         For each noun phrase, we confirm whether there is a matching title.
         We then cross-reference that noun phrase by mention count. 
-        :param doc_id: the id of the wiki
+        :param wiki_id: the id of the wiki
         '''
 
-        wiki = SolrWikiService().get(doc_id).get(doc_id, None)
+        wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
+
         if not wiki:
             return {'status':400, 'message':'Not Found'}
 
-        
-        xmlPath = '%s/%s/' % (XML_PATH, wiki['id'])
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entities_to_count = {}
+        entity_service = EntityCountsService()
+
+        for page_doc_id in page_doc_response.get(wiki_id, []):
+            for (entity, count) in entity_service.get(page_doc_id).get(page_doc_id, {}).items():
+                entities_to_count[entity] = entities_to_count.get(entity, count)
+            print entities_to_count
+
+        counts_to_entities = {}
+        for entity in entities_to_count.keys():
+            cnt = entities_to_count[entity]
+            counts_to_entities[cnt] = counts_to_entities.get(cnt, []) + [entity]
+
+        return {wiki_id:counts_to_entities}
+            
+
+
+class ListDocIdsService(restful.Resource):
+    
+    ''' Service to expose resources in WikiDocumentIterator '''
+
+    def get(self, wiki_id, start=0, limit=None):
+
+        xmlPath = '%s/%s/' % (XML_PATH, wiki_id)
         if not path.exists(xmlPath):
             return {'status':500, 'message':'Wiki not yet processed'}
 
-        entitiesToCount = {}
-        confirm = EntityConfirmationService().get
-        for file in os.listdir(xmlPath):
-            pageid = file.split('.')[0]
-            docid = '%s_%s' % (wiki['id'], pageid)
-            corefs = CoreferencesCountService().get(docid).get(['docid'], None)
-            if not corefs:
-                continue
-            for name in corefs['paraphrases'].keys():
-                cands = set([sanitizeEntity(par) for par in corefs['paraphrases']['name']])
-                print confirm(wiki['url_s'], cands)
+        if limit:
+            ids = ArticleDocIdIterator(wiki_id)[start:limit]
+        else:
+            ids = [id for id in ArticleDocIdIterator(wiki_id)[start:]]
+        return {wiki_id: ids, 'status':200, 'numFound':len(ids)}
+
+
+
+class ArticleDocIdIterator:
+
+    ''' Get all existing document IDs for a wiki -- not a service '''
+    
+    def __init__(self, wid):
+        ''' Constructor method 
+        :param wid: the wiki ID we want to iterate over
+        '''
+        self.wid = wid
+        self.counter = 0
+        self.files = [wid+'_'+xmlFile.split('.')[0] for xmlFiles in listdir('%s/%s' % (XML_PATH, str(wid))) \
+                          for xmlFile in listdir('%s/%s/%s' % (XML_PATH, str(wid), xmlFiles))]
+        self.files.sort() #why not?
+
+    def __iter__(self):
+        ''' Iterator method '''
+        return self.next()
+
+    def __getitem__(self, index):
+        ''' Allows array access 
+        :param index: int value of index
+        '''
+        return self.files[index]
+
+    def next(self):
+        ''' Get next article ID '''
+        if self.counter == len(self.files):
+            raise StopIteration
+        self.counter += 1
+        return self.files[self.counter - 1]
+
 
 def sanitizePhrase(phrase):
+    ''' "Sanitizes" noun phrases for better matching with article titles '''
     return re.sub(r" 's$", '', phrase)
-            
+
+
+def asList(value):
+    ''' Determines if the value is a list and wraps a singleton into a list if necessary,
+    done to handle the inconsistency in xml to dict
+    '''
+    return value if isinstance(value, types.ListType) else [value]
