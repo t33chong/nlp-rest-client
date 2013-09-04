@@ -122,8 +122,12 @@ class CoreferenceCountsService(restful.Resource):
         if jsonResponse['status'] != 200:
             return jsonResponse
 
-        coreferences = asList(jsonResponse[doc_id]['root']['document'].get('coreference', {}).get('coreference', []))
-        sentences = asList(jsonResponse[doc_id]['root']['document'].get('sentences', {}).get('sentence', []))
+        doc = jsonResponse[doc_id]
+        if isEmptyDoc(doc):
+            return {'status':200, doc_id:{}, 'message':'Document was empty'}
+            
+        coreferences = asList(doc['root']['document'].get('coreference', {}).get('coreference', []))
+        sentences = asList(doc['root']['document'].get('sentences', {}).get('sentence', []))
 
         mentionCounts = {}
         representativeToMentions = {}
@@ -164,9 +168,10 @@ class AllNounPhrasesService(restful.Resource):
             return jsonResponse
         dict = jsonResponse[doc_id]
         nps = []
-        sentences = asList(dict['root']['document']['sentences']['sentence'])
-        for sentence in sentences:
-            nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == u'NP']
+        if not isEmptyDoc(dict):
+            sentences = asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', []))
+            for sentence in sentences:
+                nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == u'NP']
         return {doc_id:nps, 'status':200}
 
 
@@ -306,10 +311,11 @@ class EntityCountsService(restful.Resource):
         coreferences = CoreferenceCountsService().get(doc_id).get(doc_id, {})
         
         exists = lambda x: x is not None
-        coref_mention_keys = filter(exists,  map(faultTolerantLower, coreferences['paraphrases'].keys()))
-        coref_mention_values = filter(exists, map(faultTolerantLower, [item for sublist in coreferences['paraphrases'].values() for item in sublist]))
+        docParaphrases = coreferences.get('paraphrases', {})
+        coref_mention_keys = filter(exists,  map(faultTolerantLower, docParaphrases.keys()))
+        coref_mention_values = filter(exists, map(faultTolerantLower, [item for sublist in docParaphrases.values() for item in sublist]))
         paraphrases = dict([(faultTolerantLower(item[0]), filter(exists, map(faultTolerantLower, item[1])))\
-                            for item in coreferences['paraphrases'].items()])
+                            for item in docParaphrases.items()])
 
         counts ={}
 
@@ -433,3 +439,9 @@ def faultTolerantLower(val):
     except KeyboardInterrupt:
         sys.exit()
     return None
+
+def isEmptyDoc(doc):
+    ''' Lets us know if the document is empty
+    :param doc: a dict object corresponding to an xml document
+    '''
+    return doc.get('root', {}).get('document', {}).get('sentences', None) is None
