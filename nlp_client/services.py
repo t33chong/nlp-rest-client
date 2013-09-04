@@ -32,9 +32,17 @@ MEMOIZED_ENTITIES = {}
 
 
 def useCaching(host='localhost', port=6379, db=0):
+    ''' Invoke this to set REDIS_CLIENT and enable caching on these services
+    :param host: redis server hostname
+    :param port: redis server port
+    :param db: redis db name
+    '''
     REDIS_CLIENT = redis.StrictRedis(host, port, db)
 
 def cachedServiceRequest(getMethod):
+    ''' This is a decorator responsible for optionally memoizing a service response into the cache
+    :param getMethod: the function we're wrapping -- should be a GET endpoint
+    '''
     def invoke(self, *args, **kw):
         global REDIS_CLIENT
         signature = json.dumps(dict([(args.index(arg), arg) for arg in args] + kw.items() + [('function_name', str(self.__class__)+'.'+getMethod.func_name)]))
