@@ -10,6 +10,7 @@ import requests
 import redis
 import types
 import json
+import sys
 
 
 '''
@@ -37,6 +38,7 @@ def useCaching(host='localhost', port=6379, db=0):
     :param port: redis server port
     :param db: redis db name
     '''
+    global REDIS_CLIENT
     REDIS_CLIENT = redis.StrictRedis(host, port, db)
 
 def cachedServiceRequest(getMethod):
@@ -45,20 +47,21 @@ def cachedServiceRequest(getMethod):
     '''
     def invoke(self, *args, **kw):
         global REDIS_CLIENT
-        signature = json.dumps(dict([(args.index(arg), arg) for arg in args] + kw.items() + [('function_name', str(self.__class__)+'.'+getMethod.func_name)]))
+        signature = json.dumps({'function_name': str(self.__class__)+'.'+getMethod.func_name, 'args': args, 'kw':kw})
         if not REDIS_CLIENT:
             response = getMethod(self, *args)
         else:
-            response = REDIS_CLIENT.get(signature)
-            if not response:
+            redisResponse = REDIS_CLIENT.get(signature)
+            if not redisResponse:
                 response = getMethod(self, *args)
                 if response['status'] == 200:
-                    REDIS_CLIENT.set(signature, response)
+                    REDIS_CLIENT.set(signature, json.dumps(response))
+            else:
+                response = json.loads(redisResponse)
         return response
 
-
-
     return invoke
+
 
 class ParsedXmlService(restful.Resource):
 
@@ -137,9 +140,11 @@ class CoreferenceCountsService(restful.Resource):
                     mentions += [currentMentionString]
                 except TypeError: #unhashable type -- but why?
                     continue
+                except KeyboardInterupt:
+                    sys.exit()
             mentionCounts[mentionString] = mentionCount
             representativeToMentions[mentionString] = mentions
-        return {doc_id: {'mentionCounts':mentionCounts, 'paraphrases': representativeToMentions}}
+        return {doc_id: {'mentionCounts':mentionCounts, 'paraphrases': representativeToMentions}, 'status':200}
 
 
 
@@ -162,7 +167,7 @@ class AllNounPhrasesService(restful.Resource):
         sentences = asList(dict['root']['document']['sentences']['sentence'])
         for sentence in sentences:
             nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == u'NP']
-        return {doc_id:nps}
+        return {doc_id:nps, 'status':200}
 
 
 class SolrPageService(restful.Resource):
@@ -174,7 +179,7 @@ class SolrPageService(restful.Resource):
         :param doc_id: the id of the document in Solr
         '''
         return {doc_id: requests.get(SOLR_URL+'/solr/main/select/', params={'q':'id:%s' % doc_id, 'wt':'json'}
-).json().get('response', {}).get('docs',[None])[0]}
+).json().get('response', {}).get('docs',[None])[0], 'status':200}
 
 
 class SolrWikiService(restful.Resource):
@@ -190,7 +195,7 @@ class SolrWikiService(restful.Resource):
             return {wiki_id: MEMOIZED_WIKIS[wiki_id]}
 
         serviceResponse = {wiki_id: requests.get(SOLR_URL+'/solr/xwiki/select/', params={'q':'id:%s' % wiki_id, 'wt':'json'}
-).json().get('response', {}).get('docs',[None])[0]}
+).json().get('response', {}).get('docs',[None])[0], 'status':200}
 
         MEMOIZED_WIKIS = dict(MEMOIZED_WIKIS.items() + serviceResponse.items())
 
@@ -222,7 +227,7 @@ class SentimentService(restful.Resource):
         sentimentData['subjectivity_min'] = min(subjectivities)
         sentimentData['subjectivity_max_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_max'])])
         sentimentData['subjectivity_min_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_min'])])
-        return {doc_id: sentimentData}
+        return {doc_id: sentimentData, 'status':200}
 
 
 class EntityConfirmationService():
@@ -258,10 +263,12 @@ class EntityConfirmationService():
         try:
             response = requests.get('%s/wikia.php' % wiki_url, params=params).json()
             MEMOIZED_ENTITIES[wiki_url] = dict(memo.items() + response.items())
+        except KeyboardInterrupt:
+            sys.exit()
         except: # sometimes a json object cannot be decoded?
             response = {}
 
-        return dict(existing_entities.items() + response.items())
+        return {'status':200, wiki_url:dict(existing_entities.items() + response.items())}
 
 class EntitiesService(restful.Resource):
 
@@ -281,11 +288,11 @@ class EntitiesService(restful.Resource):
 
         confirmations = {}
         for i in range(0, len(set(nps)), 10):
-            new_confirmations = EntityConfirmationService().confirm(wiki_url, nps[i:i+10])
+            new_confirmations = EntityConfirmationService().confirm(wiki_url, nps[i:i+10]).get(wiki_url)
             confirmations = dict(confirmations.items() 
                                + [item for item in new_confirmations.items() if item[1]])
 
-        return confirmations
+        return {doc_id:confirmations, 'status':200}
 
 class EntityCountsService(restful.Resource):
     
@@ -295,20 +302,18 @@ class EntityCountsService(restful.Resource):
         ''' Given a doc id, accesses entities and then cross-references entity parses 
         :param doc_id: the id of the article
         '''
-        confirmed = EntitiesService().get(doc_id)
-        coreferences = CoreferenceCountsService().get(doc_id).get(doc_id)
-        counts ={}
-        coref_mention_keys = [key.lower() for key in coreferences['paraphrases'].keys()]
-        coref_mention_values = [item.lower() for sublist in coreferences['paraphrases'].values() for item in sublist]
-        paraphrases = []
-        for item in coreferences['paraphrases'].items():
-            try:
-                paraphrases += [(item[0].lower(), [i.lower() for i in item[1]])]
-            except UnicodeEncodeError: #screw it
-                continue
-        paraphrases = dict(paraphrases)
+        confirmed = EntitiesService().get(doc_id).get(doc_id, {})
+        coreferences = CoreferenceCountsService().get(doc_id).get(doc_id, {})
+        
+        exists = lambda x: x is not None
+        coref_mention_keys = filter(exists,  map(faultTolerantLower, coreferences['paraphrases'].keys()))
+        coref_mention_values = filter(exists, map(faultTolerantLower, [item for sublist in coreferences['paraphrases'].values() for item in sublist]))
+        paraphrases = dict([(faultTolerantLower(item[0]), filter(exists, map(faultTolerantLower, item[1])))\
+                            for item in coreferences['paraphrases'].items()])
 
-        for val in [str(v).encode('utf8').lower() for v in confirmed.values()]:
+        counts ={}
+
+        for val in filter(exists, map(faultTolerantLower, confirmed.values())):
             if val in coref_mention_keys:
                 counts[val] = len(paraphrases[val])
             elif val in coref_mention_values:
@@ -355,7 +360,7 @@ class TopEntitiesService(restful.Resource):
             cnt = entities_to_count[entity]
             counts_to_entities[cnt] = counts_to_entities.get(cnt, []) + [entity]
 
-        return {wiki_id:counts_to_entities}
+        return {wiki_id:counts_to_entities, 'status':200}
             
 
 
@@ -419,3 +424,12 @@ def asList(value):
     done to handle the inconsistency in xml to dict
     '''
     return value if isinstance(value, types.ListType) else [value]
+
+def faultTolerantLower(val):
+    try:
+        return str(val).encode('utf8').lower()
+    except UnicodeEncodeError:
+        pass
+    except KeyboardInterrupt:
+        sys.exit()
+    return None
