@@ -3,17 +3,24 @@ from text.blob import TextBlob
 from nlp_client.services import *
 from os import path, listdir
 from gzip import open as gzopen
+import re
 import nltk
 import xmltodict
 import requests
-import re
+import redis
 import types
+import json
 
 
 '''
 This module contains all services used in our RESTful client.
 At this point, they are all read-only, and only respond to GET.
 '''
+
+'''
+If this value gets initialized then we will start memoizing things witih Redis
+'''
+REDIS_CLIENT = None
 
 XML_PATH = '/data/xml/'
 
@@ -22,6 +29,28 @@ SOLR_URL = 'http://search-s10:8983'
 
 MEMOIZED_WIKIS = {}
 MEMOIZED_ENTITIES = {}
+
+
+def useCaching(host='localhost', port=6379, db=0):
+    REDIS_CLIENT = redis.StrictRedis(host, port, db)
+
+def cachedServiceRequest(getMethod):
+    def invoke(self, *args, **kw):
+        global REDIS_CLIENT
+        signature = json.dumps(dict([(args.index(arg), arg) for arg in args] + kw.items() + [('function_name', str(self.__class__)+'.'+getMethod.func_name)]))
+        if not REDIS_CLIENT:
+            response = getMethod(self, *args)
+        else:
+            response = REDIS_CLIENT.get(signature)
+            if not response:
+                response = getMethod(self, *args)
+                if response['status'] == 200:
+                    REDIS_CLIENT.set(signature, response)
+        return response
+
+
+
+    return invoke
 
 class ParsedXmlService(restful.Resource):
 
@@ -53,7 +82,7 @@ class ParsedJsonService(restful.Resource):
     ''' Read-only service responsible for accessing XML and transforming it to JSON
     Uses the ParsedXmlService
     '''
-    
+    @cachedServiceRequest
     def get(self, doc_id):
         ''' Returns document parse as JSON 
         :param doc_id: the id of the document in Solr
@@ -71,7 +100,7 @@ class CoreferenceCountsService(restful.Resource):
     ''' Read-only service responsible for providing data on mention coreference
     Uses the ParsedJsonService
     '''
-
+    @cachedServiceRequest
     def get(self, doc_id):
         ''' Returns coreference and mentions for a document 
         :param doc_id: the id of the document in Solr
@@ -112,7 +141,7 @@ class AllNounPhrasesService(restful.Resource):
     TextBlob could do this too
     Uses ParsedJsonService
     '''
-    
+    @cachedServiceRequest
     def get(self, doc_id):
         ''' Get noun phrases for a document 
         :param doc_id: the id of the document in Solr
@@ -165,7 +194,7 @@ class SentimentService(restful.Resource):
     ''' Read-only service that calculates the sentiment for a given piece of text
     Relies on SolrPageService
     '''
-    
+    @cachedServiceRequest
     def get(self, doc_id):
         ''' For a document id, get data on the text's polarity and subjectivity 
         :param doc_id: the id of the document in Solr
@@ -194,7 +223,7 @@ class EntityConfirmationService():
     Confirms an entity for a given wiki
     Intentionally unexposed from REST endpoint (for now)
     '''
-
+    @cachedServiceRequest
     def confirm(self, wiki_url, entities):
         '''Given a wiki URL and a group of entities,
         confirm the existence of these entities as titles via service.
@@ -218,15 +247,18 @@ class EntityConfirmationService():
               'entities': '|'.join(unknown_entities)
         }
 
-        response = requests.get('%s/wikia.php' % wiki_url, params=params).json()
-        MEMOIZED_ENTITIES[wiki_url] = dict(memo.items() + response.items())
+        try:
+            response = requests.get('%s/wikia.php' % wiki_url, params=params).json()
+            MEMOIZED_ENTITIES[wiki_url] = dict(memo.items() + response.items())
+        except: # sometimes a json object cannot be decoded?
+            response = {}
 
         return dict(existing_entities.items() + response.items())
 
 class EntitiesService(restful.Resource):
 
     ''' Identifies, confirms, and counts entities over a given page '''
-
+    @cachedServiceRequest
     def get(self, doc_id):
         ''' Given an article id, accesses entities and confirms entities
         :param doc_id: the id of the article document
@@ -250,24 +282,31 @@ class EntitiesService(restful.Resource):
 class EntityCountsService(restful.Resource):
     
     ''' Counts the entities using coreference counts in a given document '''
-
+    @cachedServiceRequest
     def get(self, doc_id):
         ''' Given a doc id, accesses entities and then cross-references entity parses 
         :param doc_id: the id of the article
         '''
         confirmed = EntitiesService().get(doc_id)
         coreferences = CoreferenceCountsService().get(doc_id).get(doc_id)
-        
         counts ={}
-        coref_mention_keys = coreferences['paraphrases'].keys()
-        coref_mention_values = [item for sublist in coreferences['paraphrases'].values() for item in sublist]
-        for val in confirmed.values():
+        coref_mention_keys = [key.lower() for key in coreferences['paraphrases'].keys()]
+        coref_mention_values = [item.lower() for sublist in coreferences['paraphrases'].values() for item in sublist]
+        paraphrases = []
+        for item in coreferences['paraphrases'].items():
+            try:
+                paraphrases += [(item[0].lower(), [i.lower() for i in item[1]])]
+            except UnicodeEncodeError: #screw it
+                continue
+        paraphrases = dict(paraphrases)
+
+        for val in [str(v).encode('utf8').lower() for v in confirmed.values()]:
             if val in coref_mention_keys:
-                counts[val] = len(coreferences['paraphrases'][val])
+                counts[val] = len(paraphrases[val])
             elif val in coref_mention_values:
                 for key in coref_mention_keys:
-                    if val in coreferences['paraphrases'][key]:
-                        counts[val] = len(coreferences['paraphrases'][key])
+                    if val in paraphrases[key]:
+                        counts[val] = len(paraphrases[key])
                         break
 
         return {doc_id: counts, 'status': 200}
@@ -277,7 +316,7 @@ class EntityCountsService(restful.Resource):
 class TopEntitiesService(restful.Resource):
 
     ''' Aggregates entities over a wiki '''
-
+    @cachedServiceRequest
     def get(self, wiki_id):
 
         ''' Given a wiki doc id, iterates over all documents available.
@@ -315,7 +354,7 @@ class TopEntitiesService(restful.Resource):
 class ListDocIdsService(restful.Resource):
     
     ''' Service to expose resources in WikiDocumentIterator '''
-
+    @cachedServiceRequest
     def get(self, wiki_id, start=0, limit=None):
 
         xmlPath = '%s/%s/' % (XML_PATH, wiki_id)
