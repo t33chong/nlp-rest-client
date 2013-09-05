@@ -13,13 +13,15 @@ roll_forward = [ \
     lambda cursor: map(lambda query: cursor.execute(query), \
           ["""
            CREATE TABLE service_responses (
-             doc_id varchar PRIMARY KEY,
+             doc_id_and_service varchar PRIMARY KEY,
+             doc_id varchar,
              service varchar,
              wiki_id int,
              response text
            );""",
            "CREATE INDEX ON service_responses (wiki_id);",
-           "CREATE INDEX ON service_responses (service);"
+           "CREATE INDEX ON service_responses (service);",
+           "CREATE INDEX ON service_responses (doc_id);",
            ]
                        )
 ]

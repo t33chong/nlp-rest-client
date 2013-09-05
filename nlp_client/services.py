@@ -3,6 +3,7 @@ from text.blob import TextBlob
 from nlp_client.services import *
 from os import path, listdir
 from gzip import open as gzopen
+import cql
 import re
 import nltk
 import xmltodict
@@ -19,9 +20,9 @@ At this point, they are all read-only, and only respond to GET.
 '''
 
 '''
-If this value gets initialized then we will start memoizing things witih Redis
+If this value gets initialized then we will start memoizing things witih Cassandra
 '''
-REDIS_CLIENT = None
+CASSANDRA_CLIENT = None
 
 XML_PATH = '/data/xml/'
 
@@ -31,35 +32,52 @@ SOLR_URL = 'http://search-s10:8983'
 MEMOIZED_WIKIS = {}
 MEMOIZED_ENTITIES = {}
 
-
-def useCaching(host='localhost', port=6379, db=0):
+def useCaching(host='dev-indexer-s1', port=9160, keyspace='nlp'):
     ''' Invoke this to set REDIS_CLIENT and enable caching on these services
     :param host: redis server hostname
     :param port: redis server port
     :param db: redis db name
     '''
-    global REDIS_CLIENT
-    REDIS_CLIENT = redis.StrictRedis(host, port, db)
+    global CASSANDRA_CLIENT
+    CASSANDRA_CLIENT = cql.connection.connect(host, port, keyspace)
 
 def cachedServiceRequest(getMethod):
     ''' This is a decorator responsible for optionally memoizing a service response into the cache
     :param getMethod: the function we're wrapping -- should be a GET endpoint
     '''
     def invoke(self, *args, **kw):
-        global REDIS_CLIENT
-        signature = json.dumps({'function_name': str(self.__class__)+'.'+getMethod.func_name, 'args': args, 'kw':kw})
-        if not REDIS_CLIENT:
+        global CASSANDRA_CLIENT
+        doc_id = args[0]
+        wiki_id = args[0].split('_')[0] if args[0].isdigit() else 0
+        service = str(self.__class__)+'.'+getMethod.func_name
+        if not CASSANDRA_CLIENT:
             response = getMethod(self, *args)
         else:
-            redisResponse = REDIS_CLIENT.get(signature)
-            if not redisResponse:
+            cursor = CASSANDRA_CLIENT.cursor()
+            query = """
+                  SELECT response
+                  FROM service_responses
+                  WHERE doc_id_and_service = :doc_id_and_service
+            """
+            doc_id_and_service = doc_id+'_'+service
+            params = params={'doc_id_and_service': doc_id_and_service}
+            cursor.execute(query, params=params)
+            result = cursor.fetchone()
+            if len(result) < 1:
                 response = getMethod(self, *args)
                 if response['status'] == 200:
-                    REDIS_CLIENT.set(signature, json.dumps(response))
+                    insert = """
+                           INSERT INTO service_responses (doc_id_and_service, doc_id, service, wiki_id, response)
+                           VALUES (:doc_id_and_service, :doc_id, :service, :wiki_id, :response)
+                    """
+                    params['doc_id'] = doc_id
+                    params['service'] = service
+                    params['wiki_id'] = wiki_id
+                    params['response'] = json.dumps(response)
+                    cursor.execute(insert, params=params)
             else:
-                response = json.loads(redisResponse)
+                response = json.loads(result[0])
         return response
-
     return invoke
 
 
@@ -345,7 +363,6 @@ class TopEntitiesService(restful.Resource):
         '''
 
         wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
-
         if not wiki:
             return {'status':400, 'message':'Not Found'}
 
