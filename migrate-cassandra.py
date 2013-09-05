@@ -13,7 +13,7 @@ roll_forward = [ \
     lambda cursor: map(lambda query: cursor.execute(query), \
           ["""
            CREATE TABLE service_responses (
-             doc_id_and_service varchar PRIMARY KEY,
+             signature varchar PRIMARY KEY,
              doc_id varchar,
              service varchar,
              wiki_id int,

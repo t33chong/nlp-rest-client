@@ -57,24 +57,22 @@ def cachedServiceRequest(getMethod):
             query = """
                   SELECT response
                   FROM service_responses
-                  WHERE doc_id_and_service = :doc_id_and_service
+                  WHERE signature = :signature
             """
-            doc_id_and_service = doc_id+'_'+service
-            params = params={'doc_id_and_service': doc_id_and_service}
-            cursor.execute(query, params=params)
+            data = {'doc_id':doc_id, 'service':service, 'wiki_id':wiki_id}
+            signature = json.dumps({'service':service, 'args':args, 'kw':kw})
+            cursor.execute(query, params={'signature':signature})
             result = cursor.fetchone()
             if len(result) < 1:
                 response = getMethod(self, *args)
                 if response['status'] == 200:
                     insert = """
-                           INSERT INTO service_responses (doc_id_and_service, doc_id, service, wiki_id, response)
-                           VALUES (:doc_id_and_service, :doc_id, :service, :wiki_id, :response)
+                           INSERT INTO service_responses (signature, doc_id, service, wiki_id, response)
+                           VALUES (:signature, :doc_id, :service, :wiki_id, :response)
                     """
-                    params['doc_id'] = doc_id
-                    params['service'] = service
-                    params['wiki_id'] = wiki_id
-                    params['response'] = json.dumps(response)
-                    cursor.execute(insert, params=params)
+                    data['signature'] = signature
+                    data['response'] = json.dumps(response)
+                    cursor.execute(insert, params=data)
             else:
                 response = json.loads(result[0])
         return response
@@ -259,7 +257,6 @@ class EntityConfirmationService():
     Confirms an entity for a given wiki
     Intentionally unexposed from REST endpoint (for now)
     '''
-    @cachedServiceRequest
     def confirm(self, wiki_url, entities):
         '''Given a wiki URL and a group of entities,
         confirm the existence of these entities as titles via service.
