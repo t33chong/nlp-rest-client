@@ -1,0 +1,7 @@
+{
+	"cassandra": {
+		     "host": "dev-indexer-s1",
+		     "port": "9160",
+		     "keyspace": "nlp"
+	}
+}
