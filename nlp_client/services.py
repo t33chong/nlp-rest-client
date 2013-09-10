@@ -3,6 +3,7 @@ from text.blob import TextBlob
 from nlp_client.services import *
 from os import path, listdir
 from gzip import open as gzopen
+import title_confirmation
 import cql
 import re
 import nltk
@@ -251,7 +252,7 @@ class SentimentService(restful.Resource):
         return {doc_id: sentimentData, 'status':200}
 
 
-class EntityConfirmationService():
+class EntityConfirmationService(restful.Resource):
 
     ''' 
     Confirms an entity for a given wiki
@@ -263,6 +264,7 @@ class EntityConfirmationService():
         :param wiki_url: the URL of the wiki
         :param entities: a list of entities
         '''
+        
         global MEMOIZED_ENTITIES
         memo = MEMOIZED_ENTITIES.get(wiki_url, {})
         memo_vals = memo.values()
@@ -289,6 +291,18 @@ class EntityConfirmationService():
             response = {}
 
         return {'status':200, wiki_url:dict(existing_entities.items() + response.items())}
+
+    def get(self, doc_id):
+        resp = {'status':200}
+        nps = AllNounPhrasesService().get(doc_id).get(doc_id, [])
+        titles = title_confirmation.get_titles_for_wiki_id(doc_id.split('_')[0])
+        redirects = title_confirmation.get_redirects_for_wiki_id(doc_id.split('_')[0])
+        checked_titles = map(lambda x: (x, x in titles), map(title_confirmation.preprocess, nps))
+        resp['titles'] = [y[0] for y in filter(lambda x: x[1], checked_titles)]
+        redirectkeys = redirects.keys()
+        resp['redirects'] = dict(map(lambda x: (x[0], redirects[x[0]]), filter(lambda x: x[0] in redirectkeys and x[1], checked_titles)))
+        return {'status':200, doc_id:resp}
+
 
 class EntitiesService(restful.Resource):
 

@@ -6,10 +6,15 @@ import re
 import json
 import time
 
-""" Ultimately populated with processed titles for the wiki we're serving """
-TITLES = []
+""" Memoization variables """
+TITLES, REDIRECTS, CURRENT_WIKI_ID = [], {}, None
 
+
+yml = '/usr/wikia/conf/current/DB.yml'
 app = Flask(__name__)
+
+def get_config():
+    return yml
 
 def get_local_db_from_options(options, global_db):
     """ Allows us to load in the local DB name from one or more options
@@ -33,13 +38,28 @@ def get_local_db_from_options(options, global_db):
 
     return result
 
+def get_global_db():
+    lb = LoadBalancer(get_config())
+    return lb.get_db_by_name('wikicities')
+
+def get_local_db_from_wiki_id(global_db, wiki_id):
+    global CURRENT_WIKI_ID
+    cursor = get_global_db().cursor()
+    sql = "SELECT city_id, city_dbname FROM city_list WHERE city_id = %s" % str(wiki_id)
+    results = cursor.execute(sql)
+    result = cursor.fetchone()
+    if not result:
+        raise ValueError("No wiki found")
+
+    CURRENT_WIKI_ID = result[0]
+    return LoadBalancer(get_config()).get_db_by_name(result[1]) 
 
 def get_namespaces(global_db, wiki_id):
     """ Accesses the default content namespaces for the wiki
     :param global_db: the global database object
     """
     cursor = global_db.cursor()
-    results = cursor.execute("SELECT cv_value FROM city_variables WHERE cv_city_id = %d AND cv_variable_id = 359" % wiki_id)
+    results = cursor.execute("SELECT cv_value FROM city_variables WHERE cv_city_id = %s AND cv_variable_id = 359" % str(wiki_id))
     result = cursor.fetchone()
     return phpserialize.loads(result[0]).values() if result else [0, 14]
 
@@ -82,6 +102,28 @@ def is_title_legit():
     resp['redirects'] = dict(map(lambda x: (x[0], REDIRECTS[x[0]]), filter(lambda x: x[0] in redirectkeys and x[1], checked_titles)))
     return json.dumps(resp)
 
+def get_titles_for_wiki_id(wiki_id):
+    global TITLES, CURRENT_WIKI_ID
+    if wiki_id == CURRENT_WIKI_ID and len(TITLES) > 0:
+        return TITLES
+    local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
+    CURRENT_WIKI_ID = wiki_id
+    cursor = local_db.cursor()
+    cursor.execute("SELECT page_title FROM page WHERE page_namespace IN (%s)" % ", ".join(map(str, get_namespaces(get_global_db(), wiki_id))))
+    TITLES = set(map(lambda x: preprocess(x[0]), cursor))
+    CURRENT_WIKI_ID = wiki_id
+    return TITLES
+
+def get_redirects_for_wiki_id(wiki_id):
+    global REDIRECTS, CURRENT_WIKI_ID
+    if wiki_id == CURRENT_WIKI_ID and len(REDIRECTS) > 0:
+        return REDIRECTS
+    local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
+    cursor = local_db.cursor()
+    cursor.execute("SELECT page_title, rd_title FROM redirect INNER JOIN page ON page_id = rd_from")
+    REDIRECTS = dict([map(preprocess, row) for row in cursor])
+    CURRENT_WIKI_ID = wiki_id
+    return REDIRECTS
 
 def main(app):
     global TITLES, REDIRECTS
@@ -105,7 +147,7 @@ def main(app):
     REDIRECTS = dict([map(preprocess, row) for row in cursor])
 
     print "Title server ready in %s seconds" % str(time.time() - start)
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=5001)
 
 
 if __name__ == '__main__':
