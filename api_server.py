@@ -19,4 +19,5 @@ api.add_resource(TopEntitiesService,        '/wiki/<string:wiki_id>/entities')
 api.add_resource(ListDocIdsService,         '/wiki/<string:wiki_id>/docs/') #todo: get start & offset working
 
 if __name__ == '__main__':
+    useCaching()
     app.run(debug=True, host='0.0.0.0')

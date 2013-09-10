@@ -3,6 +3,7 @@ from text.blob import TextBlob
 from nlp_client.services import *
 from os import path, listdir
 from gzip import open as gzopen
+import time
 import title_confirmation
 import cql
 import re
@@ -48,11 +49,13 @@ def cachedServiceRequest(getMethod):
     '''
     def invoke(self, *args, **kw):
         global CASSANDRA_CLIENT
-        doc_id = args[0]
-        wiki_id = args[0].split('_')[0] if args[0].isdigit() else 0
+        doc_id = kw.get('doc_id', kw.get('wiki_id', None))
+        if not doc_id:
+            doc_id = args[0]
+        wiki_id = doc_id.split('_')[0]
         service = str(self.__class__)+'.'+getMethod.func_name
         if not CASSANDRA_CLIENT:
-            response = getMethod(self, *args)
+            response = getMethod(self, *args, **kw)
         else:
             cursor = CASSANDRA_CLIENT.cursor()
             query = """
@@ -61,11 +64,11 @@ def cachedServiceRequest(getMethod):
                   WHERE signature = :signature
             """
             data = {'doc_id':doc_id, 'service':service, 'wiki_id':wiki_id}
-            signature = json.dumps({'service':service, 'args':args, 'kw':kw})
+            signature = json.dumps({'service':service, 'doc_id':doc_id, 'wiki_id': wiki_id}) # could hash this
             cursor.execute(query, params={'signature':signature})
             result = cursor.fetchone()
             if len(result) < 1:
-                response = getMethod(self, *args)
+                response = getMethod(self, *args, **kw)
                 if response['status'] == 200:
                     insert = """
                            INSERT INTO service_responses (signature, doc_id, service, wiki_id, response)
@@ -293,14 +296,24 @@ class EntityConfirmationService(restful.Resource):
         return {'status':200, wiki_url:dict(existing_entities.items() + response.items())}
 
     def get(self, doc_id):
+        """
+        Use title_confirmation module to make this fast on a per-wiki basis
+        :param doc_id: the id of the document
+        """
+
         resp = {'status':200}
+
         nps = AllNounPhrasesService().get(doc_id).get(doc_id, [])
+
         titles = title_confirmation.get_titles_for_wiki_id(doc_id.split('_')[0])
         redirects = title_confirmation.get_redirects_for_wiki_id(doc_id.split('_')[0])
+
         checked_titles = map(lambda x: (x, x in titles), map(title_confirmation.preprocess, nps))
-        resp['titles'] = [y[0] for y in filter(lambda x: x[1], checked_titles)]
-        redirectkeys = redirects.keys()
-        resp['redirects'] = dict(map(lambda x: (x[0], redirects[x[0]]), filter(lambda x: x[0] in redirectkeys and x[1], checked_titles)))
+
+        resp['titles'] = list(set([y[0] for y in filter(lambda x: x[1], checked_titles)]))
+
+        resp['redirects'] = dict(filter(lambda x: x[1], map(lambda x: (x[0], redirects.get(x[0], None)), filter(lambda x: x[1], checked_titles))))
+
         return {'status':200, doc_id:resp}
 
 
