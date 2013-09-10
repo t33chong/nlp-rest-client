@@ -43,6 +43,27 @@ def useCaching(host='dev-indexer-s1', port=9160, keyspace='nlp'):
     global CASSANDRA_CLIENT
     CASSANDRA_CLIENT = cql.connection.connect(host, port, keyspace)
 
+def purgeCacheForDoc(doc_id):
+    ''' Remove all service responses for a given doc id
+    :param doc_id: the document id. if it's a wiki id, you're basically removing all wiki-scoped caching
+    '''
+    global CASSANDRA_CLIENT
+    return CASSANDRA_CLIENT.cursor().execute("DELETE FROM service_responses WHERE doc_id = :doc_id", params={'doc_id':doc_id})
+
+def purgeCacheForService(service_and_method):
+    ''' Remove cached service responses for a given service
+    :param service_and_method: the ServiceName.method
+    '''
+    global CASSANDRA_CLIENT
+    return CASSANDRA_CLIENT.cursor().execute("DELETE FROM service_responses WHERE service = :service", params={'service':service_and_method})
+
+def purgeCacheForWiki(wiki_id):
+    ''' Remove cached service responses for a given wiki id
+    :param wiki_id: the id of the wiki
+    '''
+    global CASSANDRA_CLIENT
+    return CASSANDRA_CLIENT.cusors().execute("DELETE FROM service_responses WHERE wiki_id = :wiki_id", params={'wiki_id':wiki_id})
+
 def cachedServiceRequest(getMethod):
     ''' This is a decorator responsible for optionally memoizing a service response into the cache
     :param getMethod: the function we're wrapping -- should be a GET endpoint
