@@ -360,7 +360,7 @@ class WikiEntitiesService(restful.Resource):
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
-            print '(%s/%s)' % (counter,total),entities_to_count
+            print '(%s/%s)' % (counter,total)
             counter += 1
 
         counts_to_entities = {}
