@@ -25,4 +25,4 @@ if options.service:
 elif options.doc_id:
     services.purgeCacheForDoc(options.doc_id)
 elif options.wiki_id:
-    service.purgeCacheForWiki(options.wiki_id)
+    services.purgeCacheForWiki(options.wiki_id)
