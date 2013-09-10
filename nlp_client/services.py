@@ -53,7 +53,7 @@ def cachedServiceRequest(getMethod):
         if not doc_id:
             doc_id = args[0]
         wiki_id = doc_id.split('_')[0]
-        service = str(self.__class__)+'.'+getMethod.func_name
+        service = str(self.__class__.__name__)+'.'+getMethod.func_name
         if not CASSANDRA_CLIENT:
             response = getMethod(self, *args, **kw)
         else:
@@ -316,6 +316,22 @@ class EntityCountsService(restful.Resource):
 
 
 class TopEntitiesService(restful.Resource):
+    
+    ''' Gets the most frequent entities in a wiki '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+        counts_to_entities = WikiEntitiesService().get(wiki_id).get(wiki_id, {})
+        keys = counts_to_entities.keys()
+        keys.sort().reverse()
+        items = []
+        for key in keys:
+            vals = counts_to_entities[key]
+            vals.sort() # alphabetical -- why not?
+            items += [(val, key) for val in vals]
+        print items
+        return {status: 200, wiki_id: items}
+
+class WikiEntitiesService(restful.Resource):
 
     ''' Aggregates entities over a wiki '''
     @cachedServiceRequest
