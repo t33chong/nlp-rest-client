@@ -1,8 +1,8 @@
 import sys
-from nlp_client import services
+from nlp_client import services, caching
 
 try:
-    services.useCaching()
+    caching.useCaching()
     te = services.TopEntitiesService()
     print te.get(sys.argv[1])
 except KeyboardInterrupt:

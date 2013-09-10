@@ -1,6 +1,7 @@
 from flask import Flask
 from flask.ext import restful
 from nlp_client.services import *
+from nlp_client.caching import useCaching
 import sys
 
 app = Flask(__name__)

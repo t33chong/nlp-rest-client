@@ -1,7 +1,7 @@
 '''
 Allows different dimentionalities of cache purging from Cassandra.
 '''
-from nlp_client import services
+from nlp_client import caching
 from optparse import OptionParser
 
 parser = OptionParser()
@@ -18,11 +18,11 @@ parser.add_option('-w', '--wiki_id', dest='wiki_id', default=None,
 if not options.service and not options.doc_id and not options.wiki_id:
     raise ValueError("Need to specify a type of purge")
 
-services.useCaching()
+caching.useCaching()
 
 if options.service:
-    services.purgeCacheForService(options.service)
+    caching.purgeCacheForService(options.service)
 elif options.doc_id:
-    services.purgeCacheForDoc(options.doc_id)
+    caching.purgeCacheForDoc(options.doc_id)
 elif options.wiki_id:
-    services.purgeCacheForWiki(options.wiki_id)
+    caching.purgeCacheForWiki(options.wiki_id)
