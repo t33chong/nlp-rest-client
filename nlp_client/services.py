@@ -48,21 +48,33 @@ def purgeCacheForDoc(doc_id):
     :param doc_id: the document id. if it's a wiki id, you're basically removing all wiki-scoped caching
     '''
     global CASSANDRA_CLIENT
-    return CASSANDRA_CLIENT.cursor().execute("DELETE FROM service_responses WHERE doc_id = :doc_id", params={'doc_id':doc_id})
+    cursor = CASSANDRA_CLIENT.cursor()
+    result = cursor.execute("SELECT signature FROM service_responses WHERE doc_id = :doc_id", params={'doc_id':doc_id})
+    deletes = [row[0] for row in cursor]
+    map(lambda x: cursor.execute("DELETE FROM service_responses WHERE signature = :signature", params={'signature':x[0]}), deletes)
+    return True
 
 def purgeCacheForService(service_and_method):
     ''' Remove cached service responses for a given service
     :param service_and_method: the ServiceName.method
     '''
     global CASSANDRA_CLIENT
-    return CASSANDRA_CLIENT.cursor().execute("DELETE FROM service_responses WHERE service = :service", params={'service':service_and_method})
+    cursor = CASSANDRA_CLIENT.cursor()
+    result = cursor.execute("SELECT signature FROM service_responses WHERE service = :service", params={'service':service_and_method})
+    deletes = [row[0] for row in cursor]
+    map(lambda x: cursor.execute("DELETE FROM service_responses WHERE signature = :signature", params={'signature':x[0]}), deletes)
+    return True
 
 def purgeCacheForWiki(wiki_id):
     ''' Remove cached service responses for a given wiki id
     :param wiki_id: the id of the wiki
     '''
     global CASSANDRA_CLIENT
-    return CASSANDRA_CLIENT.cusors().execute("DELETE FROM service_responses WHERE wiki_id = :wiki_id", params={'wiki_id':wiki_id})
+    cursor = CASSANDRA_CLIENT.cursor()
+    result = cursor.execute("SELECT signature FROM service_responses WHERE wiki_id = :wiki_id", params={'wiki_id':wiki_id})
+    deletes = [row[0] for row in cursor]
+    map(lambda x: cursor.execute("DELETE FROM service_responses WHERE signature = :signature", params={'signature':x[0]}), deletes)
+    return True
 
 def cachedServiceRequest(getMethod):
     ''' This is a decorator responsible for optionally memoizing a service response into the cache
@@ -88,7 +100,8 @@ def cachedServiceRequest(getMethod):
             signature = json.dumps({'service':service, 'doc_id':doc_id, 'wiki_id': wiki_id}) # could hash this
             cursor.execute(query, params={'signature':signature})
             result = cursor.fetchone()
-            if len(result) < 1:
+            print result
+            if len(result) < 1 or result[0] is None:
                 response = getMethod(self, *args, **kw)
                 if response['status'] == 200:
                     insert = """
