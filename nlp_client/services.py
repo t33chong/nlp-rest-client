@@ -255,52 +255,15 @@ class SentimentService(restful.Resource):
         return {doc_id: sentimentData, 'status':200}
 
 
-class EntityConfirmationService(restful.Resource):
+class EntitiesService(restful.Resource):
 
-    ''' 
-    Confirms an entity for a given wiki
-    Intentionally unexposed from REST endpoint (for now)
-    '''
-    def confirm(self, wiki_url, entities):
-        '''Given a wiki URL and a group of entities,
-        confirm the existence of these entities as titles via service.
-        :param wiki_url: the URL of the wiki
-        :param entities: a list of entities
-        '''
-        
-        global MEMOIZED_ENTITIES
-        memo = MEMOIZED_ENTITIES.get(wiki_url, {})
-        memo_vals = memo.values()
-        memo_keys = memo.keys()
-        existing_entities = dict([(entity, entity) for entity in entities if entity in memo_vals] \
-                               + [(entity, memo[entity]) for entity in entities if entity in memo_keys])
-        
-        def filterfn(current): return current not in existing_entities.keys() and current not in existing_entities.values()
-
-        unknown_entities = filter(filterfn, entities)
-
-        params = {
-            'controller': 'WikiaSearchController',
-                'method': 'resolveEntities',
-              'entities': '|'.join(unknown_entities)
-        }
-
-        try:
-            response = requests.get('%s/wikia.php' % wiki_url, params=params).json()
-            MEMOIZED_ENTITIES[wiki_url] = dict(memo.items() + response.items())
-        except KeyboardInterrupt:
-            sys.exit()
-        except: # sometimes a json object cannot be decoded?
-            response = {}
-
-        return {'status':200, wiki_url:dict(existing_entities.items() + response.items())}
-
+    ''' Identifies, confirms, and counts entities over a given page '''
+    @cachedServiceRequest
     def get(self, doc_id):
         """
         Use title_confirmation module to make this fast on a per-wiki basis
         :param doc_id: the id of the document
         """
-
         resp = {'status':200}
 
         nps = AllNounPhrasesService().get(doc_id).get(doc_id, [])
@@ -317,30 +280,6 @@ class EntityConfirmationService(restful.Resource):
         return {'status':200, doc_id:resp}
 
 
-class EntitiesService(restful.Resource):
-
-    ''' Identifies, confirms, and counts entities over a given page '''
-    @cachedServiceRequest
-    def get(self, doc_id):
-        ''' Given an article id, accesses entities and confirms entities
-        :param doc_id: the id of the article document
-        '''
-
-        wid = doc_id.split('_')[0]
-        wiki_url = SolrWikiService().get(wid).get(wid)['url']
-
-        nps = [sanitizePhrase(phrase) for phrase in AllNounPhrasesService().get(doc_id).get(doc_id)]
-        if not nps:
-            return {'status':400, 'message': 'Document not found'}
-
-        confirmations = {}
-        for i in range(0, len(set(nps)), 10):
-            new_confirmations = EntityConfirmationService().confirm(wiki_url, nps[i:i+10]).get(wiki_url)
-            confirmations = dict(confirmations.items() 
-                               + [item for item in new_confirmations.items() if item[1]])
-
-        return {doc_id:confirmations, 'status':200}
-
 class EntityCountsService(restful.Resource):
     
     ''' Counts the entities using coreference counts in a given document '''
@@ -349,26 +288,28 @@ class EntityCountsService(restful.Resource):
         ''' Given a doc id, accesses entities and then cross-references entity parses 
         :param doc_id: the id of the article
         '''
-        confirmed = EntitiesService().get(doc_id).get(doc_id, {})
+        entitiesresponse = EntitiesService().get(doc_id).get(doc_id, {})
         coreferences = CoreferenceCountsService().get(doc_id).get(doc_id, {})
         
         exists = lambda x: x is not None
         docParaphrases = coreferences.get('paraphrases', {})
-        coref_mention_keys = filter(exists,  map(faultTolerantLower, docParaphrases.keys()))
-        coref_mention_values = filter(exists, map(faultTolerantLower, [item for sublist in docParaphrases.values() for item in sublist]))
-        paraphrases = dict([(faultTolerantLower(item[0]), filter(exists, map(faultTolerantLower, item[1])))\
+        coref_mention_keys = map(title_confirmation.preprocess, docParaphrases.keys())
+        coref_mention_values = map(title_confirmation.preprocess, [item for sublist in docParaphrases.values() for item in sublist])
+        paraphrases = dict([(title_confirmation.preprocess(item[0]), map(title_confirmation.preprocess, item[1]))\
                             for item in docParaphrases.items()])
 
         counts ={}
 
-        for val in filter(exists, map(faultTolerantLower, confirmed.values())):
-            if val in coref_mention_keys:
-                counts[val] = len(paraphrases[val])
-            elif val in coref_mention_values:
-                for key in coref_mention_keys:
-                    if val in paraphrases[key]:
-                        counts[val] = len(paraphrases[key])
-                        break
+        for val in entitiesresponse['titles']:
+            canonical = entitiesresponse['redirects'].get(val, val)
+            if canonical in coref_mention_keys:
+                counts[canonical] = len(paraphrases[canonical])
+            elif canonical != val and val in coref_mention_keys:
+                counts[canonical] = len(paraphrases[val])
+            elif canonical in coref_mention_values:
+                counts[canonical] = len(filter(lambda x: canonical in x[1], paraphrases.items())[0][1])
+            elif canonical != val and val in coref_mention_values:
+                counts[canonical] = len(filter(lambda x: val in x[1], paraphrases.items())[0][1])
 
         return {doc_id: counts, 'status': 200}
 
@@ -397,10 +338,14 @@ class TopEntitiesService(restful.Resource):
         entities_to_count = {}
         entity_service = EntityCountsService()
 
-        for page_doc_id in page_doc_response.get(wiki_id, []):
-            for (entity, count) in entity_service.get(page_doc_id).get(page_doc_id, {}).items():
-                entities_to_count[entity] = entities_to_count.get(entity, count)
-            print entities_to_count
+        counter = 1
+        page_doc_ids = page_doc_response.get(wiki_id, [])
+        total = len(page_doc_ids)
+        for page_doc_id in page_doc_ids:
+            entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
+            map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
+            print '(%s/%s)' % (counter,total),entities_to_count
+            counter += 1
 
         counts_to_entities = {}
         for entity in entities_to_count.keys():
@@ -471,15 +416,6 @@ def asList(value):
     done to handle the inconsistency in xml to dict
     '''
     return value if isinstance(value, types.ListType) else [value]
-
-def faultTolerantLower(val):
-    try:
-        return str(val).encode('utf8').lower()
-    except UnicodeEncodeError:
-        pass
-    except KeyboardInterrupt:
-        sys.exit()
-    return None
 
 def isEmptyDoc(doc):
     ''' Lets us know if the document is empty
