@@ -321,15 +321,11 @@ class TopEntitiesService(restful.Resource):
     @cachedServiceRequest
     def get(self, wiki_id):
         counts_to_entities = WikiEntitiesService().get(wiki_id).get(wiki_id, {})
-        keys = counts_to_entities.keys()
-        keys.sort().reverse()
-        items = []
-        for key in keys:
-            vals = counts_to_entities[key]
-            vals.sort() # alphabetical -- why not?
-            items += [(val, key) for val in vals]
-        print items
-        return {status: 200, wiki_id: items}
+        items = sorted([(val, key) for key in counts_to_entities.keys() for val in counts_to_entities[key]], \
+                           key=lambda item:int(item[1]), \
+                           reverse=True)
+
+        return {'status': 200, wiki_id: items}
 
 class WikiEntitiesService(restful.Resource):
 
