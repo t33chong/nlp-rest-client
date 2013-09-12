@@ -4,6 +4,7 @@ from nlp_client.services import *
 from os import path, listdir
 from gzip import open as gzopen
 from caching import cachedServiceRequest
+from mrg_utils import Sentence as MrgSentence
 import time
 import title_confirmation
 import cql
@@ -15,6 +16,7 @@ import redis
 import types
 import json
 import sys
+
 
 
 '''
@@ -117,28 +119,65 @@ class CoreferenceCountsService(restful.Resource):
         return {doc_id: {'mentionCounts':mentionCounts, 'paraphrases': representativeToMentions}, 'status':200}
 
 
+class PhraseService():
+
+    ''' Not restful, allows us to abstract out what nodes we want from a tree parse '''
+    
+    @staticmethod
+    def get(doc_id, phrase_type):
+        jsonResponse = ParsedJsonService().get(doc_id)
+        if jsonResponse['status'] != 200:
+            return jsonResponse
+        dict = jsonResponse[doc_id]
+        if not isEmptyDoc(dict):
+            return [' '.join(f.leaves()) \
+                        for sentence in asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', [])) \
+                        for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == phrase_type \
+                    ]
+
+
 
 class AllNounPhrasesService(restful.Resource):
 
-    ''' Read-only service that gives all noun phrases for a document
-    TextBlob could do this too
-    Uses ParsedJsonService
-    '''
+    ''' Read-only service that gives all noun phrases for a document '''
+
     @cachedServiceRequest
     def get(self, doc_id):
         ''' Get noun phrases for a document 
         :param doc_id: the id of the document in Solr
         '''
+        return {doc_id:PhraseService.get(doc_id, u'NP'), 'status':200}
+
+
+class AllVerbPhrasesService(restful.Resource):
+
+    ''' Read-only service that gives all verb phrases for a document '''
+
+    @cachedServiceRequest
+    def get(self, doc_id):
+        ''' Get verb phrases for a document 
+        :param doc_id: the id of the document in Solr
+        '''
+        return {doc_id:PhraseService.get(doc_id, u'VP'), 'status':200}
+
+class HeadsService(restful.Resource):
+
+    ''' Provides syntactic heads for a given document '''
+
+    @cachedServiceRequest
+    def get(self, doc_id):
         jsonResponse = ParsedJsonService().get(doc_id)
         if jsonResponse['status'] != 200:
             return jsonResponse
         dict = jsonResponse[doc_id]
-        nps = []
+        counter = 0
         if not isEmptyDoc(dict):
-            sentences = asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', []))
-            for sentence in sentences:
-                nps += [' '.join(f.leaves()) for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == u'NP']
-        return {doc_id:nps, 'status':200}
+            return {'status':200,
+                    doc_id: [title_confirmation.preprocess(MrgSentence(sentence.get('parse', '')).nodes.getTermHead().getString()) \
+                                 for sentence in asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', [])) \
+                                 ]
+                    }
+            
 
 
 class SolrPageService(restful.Resource):

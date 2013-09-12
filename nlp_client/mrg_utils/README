@@ -1,0 +1,23 @@
+mrg_utils.py
+Created by Robert Elwell
+University of Texas at Austin
+Department of Linguistics
+http://comp.ling.utexas.edu/relwell
+
+Licensed under GPL
+
+This is a set of python classes for processing Penn-Treebank-style combined parses, 
+also known as the .mrg format in PTB release two.  Files should be fairly self-explanatory.  
+
+Canonical node is mrg_utils.py, but mrg_document.py and node.py may be more informative 
+for someone starting out.
+
+This could save you up to a month of writing and debugging, and was designed to be scalable.
+
+You can use this to extract features, easily run statistics, and navigate syntactic trees.
+
+This code is built from an API originally designed to interface with Stanford Parser-style dependency 
+parse outputs (Marneffe et al, 2006), Penn Discourse Treebank data, and more.  Code or 
+guidance will be furnished upon request by emailing me at robert.elwell@gmail.com.
+
+Good luck, and enjoy.
