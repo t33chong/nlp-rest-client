@@ -31,7 +31,20 @@ SOLR_URL = 'http://search-s10:8983'
 
 MEMOIZED_WIKIS = {}
 
-class ParsedXmlService(restful.Resource):
+class RestfulResource(restful.Resource):
+    
+    ''' Wraps restful.Resource to allow additional logic '''
+
+    def nestedGet(self, doc_id, backoff=None):
+        ''' Allows us to call a service and extract data from its response 
+        :param doc_id: the id of the document
+        :param backoff: default value
+        '''
+        return self.get(doc_id).get(doc_id, backoff)
+
+
+
+class ParsedXmlService(RestfulResource):
 
     ''' Read-only service responsible for accessing XML from FS '''
     
@@ -56,7 +69,7 @@ class ParsedXmlService(restful.Resource):
         return response
 
 
-class ParsedJsonService(restful.Resource):
+class ParsedJsonService(RestfulResource):
 
     ''' Read-only service responsible for accessing XML and transforming it to JSON
     Uses the ParsedXmlService
@@ -74,7 +87,7 @@ class ParsedJsonService(restful.Resource):
         return {'status':200, doc_id: xmltodict.parse(xmlResponse[doc_id])}
 
 
-class CoreferenceCountsService(restful.Resource):
+class CoreferenceCountsService(RestfulResource):
 
     ''' Read-only service responsible for providing data on mention coreference
     Uses the ParsedJsonService
@@ -137,7 +150,7 @@ class PhraseService():
 
 
 
-class AllNounPhrasesService(restful.Resource):
+class AllNounPhrasesService(RestfulResource):
 
     ''' Read-only service that gives all noun phrases for a document '''
 
@@ -149,7 +162,7 @@ class AllNounPhrasesService(restful.Resource):
         return {doc_id:PhraseService.get(doc_id, u'NP'), 'status':200}
 
 
-class AllVerbPhrasesService(restful.Resource):
+class AllVerbPhrasesService(RestfulResource):
 
     ''' Read-only service that gives all verb phrases for a document '''
 
@@ -160,7 +173,7 @@ class AllVerbPhrasesService(restful.Resource):
         '''
         return {doc_id:PhraseService.get(doc_id, u'VP'), 'status':200}
 
-class HeadsService(restful.Resource):
+class HeadsService(RestfulResource):
 
     ''' Provides syntactic heads for a given document '''
 
@@ -177,10 +190,44 @@ class HeadsService(restful.Resource):
                                  for sentence in asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', [])) \
                                  ]
                     }
+        else:
+            return {'status':400,
+                    'message': "No sentences found"}
             
 
+class HeadsCountService(RestfulResource):
 
-class SolrPageService(restful.Resource):
+    ''' Provides a count for all heads in a wiki '''
+
+    @cachedServiceRequest
+    def get(self, wiki_id):
+        wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
+        if not wiki:
+            return {'status':400, 'message':'Not Found'}
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        page_doc_ids = page_doc_response.get(wiki_id, [])
+        hs = HeadsService()
+        allHeads = [head for heads in filter(lambda x: x is not None, map(hs.nestedGet, page_doc_ids)) for head in heads]
+        singleHeads = set(allHeads)
+        return {'status':200, wiki_id: dict(zip(singleHeads, map(allHeads.count, singleHeads))) }
+
+class TopHeadsService(RestfulResource):
+
+    ''' Gets the most frequent syntactic in a wiki '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+        heads_to_counts = HeadsCountService().nestedGet(wiki_id, {})
+        items = sorted(heads_to_counts.items(), \
+                           key=lambda item:int(item[1]), \
+                           reverse=True)
+
+        return {'status': 200, wiki_id: items}
+
+class SolrPageService(RestfulResource):
 
     ''' Read-only service that accesses a single page-level document from Solr '''
     
@@ -192,7 +239,7 @@ class SolrPageService(restful.Resource):
 ).json().get('response', {}).get('docs',[None])[0], 'status':200}
 
 
-class SolrWikiService(restful.Resource):
+class SolrWikiService(RestfulResource):
 
     ''' Read-only service that accesses a single wiki-level document from Solr '''
     
@@ -212,7 +259,7 @@ class SolrWikiService(restful.Resource):
         return serviceResponse
 
 
-class SentimentService(restful.Resource):
+class SentimentService(RestfulResource):
 
     ''' Read-only service that calculates the sentiment for a given piece of text
     Relies on SolrPageService
@@ -240,7 +287,7 @@ class SentimentService(restful.Resource):
         return {doc_id: sentimentData, 'status':200}
 
 
-class EntitiesService(restful.Resource):
+class EntitiesService(RestfulResource):
 
     ''' Identifies, confirms, and counts entities over a given page '''
     @cachedServiceRequest
@@ -256,7 +303,7 @@ class EntitiesService(restful.Resource):
         titles = title_confirmation.get_titles_for_wiki_id(doc_id.split('_')[0])
         redirects = title_confirmation.get_redirects_for_wiki_id(doc_id.split('_')[0])
 
-        checked_titles = map(lambda x: (x, x in titles), map(title_confirmation.preprocess, nps))
+        checked_titles = map(lambda x: (x, x in titles), map(title_confirmation.preprocess, nps)) if nps is not None else []
 
         resp['titles'] = list(set([y[0] for y in filter(lambda x: x[1], checked_titles)]))
 
@@ -265,7 +312,7 @@ class EntitiesService(restful.Resource):
         return {'status':200, doc_id:resp}
 
 
-class EntityCountsService(restful.Resource):
+class EntityCountsService(RestfulResource):
     
     ''' Counts the entities using coreference counts in a given document '''
     @cachedServiceRequest
@@ -300,7 +347,7 @@ class EntityCountsService(restful.Resource):
 
 
 
-class TopEntitiesService(restful.Resource):
+class TopEntitiesService(RestfulResource):
     
     ''' Gets the most frequent entities in a wiki '''
     @cachedServiceRequest
@@ -312,7 +359,7 @@ class TopEntitiesService(restful.Resource):
 
         return {'status': 200, wiki_id: items}
 
-class WikiEntitiesService(restful.Resource):
+class WikiEntitiesService(RestfulResource):
 
     ''' Aggregates entities over a wiki '''
     @cachedServiceRequest
@@ -353,7 +400,7 @@ class WikiEntitiesService(restful.Resource):
             
 
 
-class ListDocIdsService(restful.Resource):
+class ListDocIdsService(RestfulResource):
     
     ''' Service to expose resources in WikiDocumentIterator '''
     @cachedServiceRequest

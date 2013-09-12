@@ -21,6 +21,8 @@ api.add_resource(SolrWikiService,           '/wiki/<string:wiki_id>/solr')
 api.add_resource(WikiEntitiesService,       '/wiki/<string:wiki_id>/entities')
 api.add_resource(ListDocIdsService,         '/wiki/<string:wiki_id>/docs/') #todo: get start & offset working
 api.add_resource(TopEntitiesService,        '/wiki/<string:wiki_id>/top_entities')
+api.add_resource(HeadsCountService,         '/wiki/<string:wiki_id>/head_counts')
+api.add_resource(TopHeadsService,           '/wiki/<string:wiki_id>/top_heads')
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:

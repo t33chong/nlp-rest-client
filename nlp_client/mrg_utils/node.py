@@ -85,7 +85,7 @@ class Node:
                 for case in sqCop:
                     if headRules[case[0]](self, case[1]) != None:
                         return headRules[case[0]](self, case[1])
-        for tup in semHeadRules[self.pos.split('-')[0]]:
+        for tup in semHeadRules.get(self.pos.split('-')[0], []):
             if headRules[tup[0]](self, tup[1]) != None:
                 return headRules[tup[0]](self, tup[1])
         return self.children[0]     
