@@ -31,10 +31,12 @@ class EventResource(restful.Resource):
         :param path: the string value of the path or file we want to delete
         '''
 
-        conn = boto.connect_s3()
-        bucket = conn.get_bucket('nlp-data')
+        global AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+        conn = connect_s3(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        key = Key(conn.get_bucket('nlp-data'))
+        key.key = path
         try:
-            Key(path).delete()
+            key.delete()
         except:
             pass
         
@@ -82,7 +84,7 @@ class WikiEventService(EventResource):
         if not wiki_id:
             # this is just being super, super safe, because no wiki ID would delete all xml
             raise ValueError("A wiki ID is required")
-        self._deleteFromS3('xml/%d' % wiki_id)
+        self._deleteFromS3('xml/%d/' % wiki_id)
         return {'status': 200}
 
 
