@@ -19,7 +19,7 @@ def main(wid):
         break
     entities = [entity[0].decode('utf-8') for entity in response]
     url = SolrWikiService().get(int(wid))[int(wid)]['url'].decode('utf-8')
-    print '%s,'.encode('utf-8') + ','.join(entities).encode('utf-8')
+    print url.encode('utf-8') + ',' + ','.join(entities).encode('utf-8')
     Popen('python %s -w %s' % (os.path.join(os.getcwd(), 'purge-cassandra.py'), wid), shell=True)
 
 if __name__ == '__main__':
