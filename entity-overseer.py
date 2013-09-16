@@ -21,6 +21,8 @@ parser.add_option("-c", "--csv-file", dest="csv_file", action="store", default='
                   help="Defines the output CSV file")
 parser.add_option("-x", "--xml-dir", dest="xml_dir", action="store", default='/data/xml',
                   help="Defines the XML directory to iterate over")
+parser.add_option("-s", "--skip", dest="skip", action="store", default=None,
+                  help="Specifies a file containing a newline-separated list of wids to skip")
 
 (options, args) = parser.parse_args()
 
