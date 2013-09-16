@@ -287,6 +287,30 @@ class SentimentService(RestfulResource):
         return {doc_id: sentimentData, 'status':200}
 
 
+class AllTitlesService(RestfulResource):
+
+    ''' Responsible for accessing all titles from database using title_confirmation module '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+        ''' Extracts titles for a wiki from database
+        The module it uses stores this value memory when caching is off.
+        :param wiki_id: the id of the wiki
+        '''
+        return {'status': 200, wiki_id: list(title_confirmation.get_titles_for_wiki_id(wiki_id))}
+        
+
+class RedirectsService(RestfulResource):
+
+    ''' Responsible for accessing list of redirects, correlating to their canonical title '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+        ''' Gives us a dictionary of redirect to canonical title
+        In-memory caching when we don't have db caching.
+        :param wiki_id: the id of the wiki
+        '''
+        return {'status': 200, wiki_id: title_confirmation.get_redirects_for_wiki_id(wiki_id)}
+
+
 class EntitiesService(RestfulResource):
 
     ''' Identifies, confirms, and counts entities over a given page '''
@@ -300,14 +324,17 @@ class EntitiesService(RestfulResource):
 
         nps = AllNounPhrasesService().get(doc_id).get(doc_id, [])
 
-        titles = title_confirmation.get_titles_for_wiki_id(doc_id.split('_')[0])
-        redirects = title_confirmation.get_redirects_for_wiki_id(doc_id.split('_')[0])
+        titles = AllTitlesService().nestedGet(doc_id.split('_')[0])
+        redirects = RedirectsService().nestedGet(doc_id.split('_')[0])
 
-        checked_titles = map(lambda x: (x, x in titles), map(title_confirmation.preprocess, nps)) if nps is not None else []
+        if nps is None:
+            return {'status': 200, doc_id:{'titles': [], 'redirects': {}}}
 
-        resp['titles'] = list(set([y[0] for y in filter(lambda x: x[1], checked_titles)]))
+        checked_titles = filter(lambda x: x in titles, map(title_confirmation.preprocess, nps))
 
-        resp['redirects'] = dict(filter(lambda x: x[1], map(lambda x: (x[0], redirects.get(x[0], None)), filter(lambda x: x[1], checked_titles))))
+        resp['titles'] = list(set(checked_titles))
+
+        resp['redirects'] = dict(filter(lambda x: x[1], map(lambda x: (x, redirects.get(x, None)), checked_titles)))
 
         return {'status':200, doc_id:resp}
 
@@ -357,7 +384,8 @@ class TopEntitiesService(RestfulResource):
                            key=lambda item:int(item[1]), \
                            reverse=True)
 
-        return {'status': 200, wiki_id: items}
+        return {'status': 200, wiki_id: dict(items[:50])}
+
 
 class WikiEntitiesService(RestfulResource):
 
