@@ -18,7 +18,10 @@ CACHED_SERVICES = ['CoreferenceCountsService.get', 'AllNounPhrasesService.get', 
                    'AllTitlesService.get', 'RedirectsServices.get', 'EntitiesService.get', 'EntityCountsService.get',
                    'TopEntitiesService.get', 'WikiEntitiesService.get']
 
-def table(table=None):
+WRITE_ONLY = False
+READ_ONLY = False
+
+def table(table = None):
     ''' Access & mutate so we don't have globals in every function
     :param table: An instance of boto.dyanmodb2.table.Table
     '''
@@ -28,10 +31,35 @@ def table(table=None):
     return CACHE_TABLE
 
 
-def useCaching():
-    ''' Invoke this to set CACHE_TABLE and enable caching on these services '''
+def read_only(mutate = None):
+    ''' Access & mutate so we don't need globals in every function
+    :param mutate: a boolean value
+    '''
+    global READ_ONLY
+    if mutate is not None:
+        READ_ONLY = mutate
+    return READ_ONLY
+
+
+def write_only(mutate = None):
+    ''' Access & mutate so we don't need globals in every function
+    :paramm mutate: a boolean value
+    '''
+    global WRITE_ONLY
+    if mutate is not None:
+        WRITE_ONLY = mutate
+    return WRITE_ONLY
+
+
+def useCaching(writeOnly = False, readOnly = False):
+    ''' Invoke this to set CACHE_TABLE and enable caching on these services 
+    :param write_only: whether we should avoid reading from the cache
+    :param read_only: whether we should avoid writing to the cache
+    '''
     table(Table('service_data'))
-    
+    read_only(readOnly)
+    write_only(writeOnly)
+
 
 def purgeCacheForDoc(doc_id):
     ''' Remove all service responses for a given doc id
@@ -41,6 +69,7 @@ def purgeCacheForDoc(doc_id):
         map(lambda x: batch.delete_item(doc_id=doc_id, service=x), CACHED_SERVICES)
 
     return True
+
 
 def purgeCacheForService(service_and_method):
     ''' Remove cached service responses for a given service
@@ -72,22 +101,25 @@ def cachedServiceRequest(getMethod):
     '''
     def invoke(self, *args, **kw):
 
-        doc_id = kw.get('doc_id', kw.get('wiki_id', None))
-        if not doc_id:
-            doc_id = args[0]
-        wiki_id = int(doc_id.split('_')[0])
-        service = str(self.__class__.__name__)+'.'+getMethod.func_name
         if not table():
             response = getMethod(self, *args, **kw)
+
         else:
+            doc_id = kw.get('doc_id', kw.get('wiki_id', None))
+            if not doc_id:
+                doc_id = args[0]
+            wiki_id = int(doc_id.split('_')[0])
+            service = str(self.__class__.__name__)+'.'+getMethod.func_name
             
             data = {'doc_id':doc_id, 'service':service, 'wiki_id':wiki_id}
 
-            results = [result for result in table().query(service__eq=service, doc_id__eq=doc_id)]
+            results = []
+            if not write_only():
+                results = [result for result in table().query(service__eq=service, doc_id__eq=doc_id)]
 
             if len(results) == 0:
                 response = getMethod(self, *args, **kw)
-                if response['status'] == 200:
+                if response['status'] == 200 and not read_only():
                     data['response'] = json.dumps(response[doc_id])
                     data['updated'] = int(time.time())
                     item = Item(table(), data)
