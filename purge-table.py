@@ -1,5 +1,5 @@
 '''
-Allows different dimentionalities of cache purging from Cassandra.
+Allows different dimentionalities of cache purging.
 '''
 from nlp_client import caching
 from optparse import OptionParser

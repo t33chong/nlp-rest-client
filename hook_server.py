@@ -31,8 +31,7 @@ class EventResource(restful.Resource):
         :param path: the string value of the path or file we want to delete
         '''
 
-        global AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-        conn = connect_s3(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        conn = connect_s3()
         key = Key(conn.get_bucket('nlp-data'))
         key.key = path
         try:
@@ -95,6 +94,4 @@ api.add_resource(DocEventService,          '/docs/')
 api.add_resource(WikiEventService,         '/wiki/<int:wiki_id>/')
 
 if __name__ == '__main__':
-    config = json.loads("\n".join(open('aws.json').readlines()))
-    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = config.get('access_key', None), config.get('secret_key', None)
     app.run(debug=True, host='0.0.0.0')
