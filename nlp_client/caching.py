@@ -1,93 +1,101 @@
-import cql
+from boto.dynamodb2.table import Table
+from boto.dynamodb2.items import Item
 import json
+import time
 
 '''
 Caching library -- basically memoizes stuff for now
 '''
 
 '''
-If this value gets initialized then we will start memoizing things witih Cassandra
+If this value gets initialized then we will start memoizing things witih DynamoDB
 '''
-CASSANDRA_CLIENT = None
+CACHE_TABLE = None
 
+''' Needed to enumerate, unfortunately '''
+CACHED_SERVICES = ['CoreferenceCountsService.get', 'AllNounPhrasesService.get', 'AllVerbPhrasesService.get', 
+                   'HeadsService.get', 'HeadsCountService.get', 'TopHeadsService.get', 'SentimentService.get',
+                   'AllTitlesService.get', 'RedirectsServices.get', 'EntitiesService.get', 'EntityCountsService.get',
+                   'TopEntitiesService.get', 'WikiEntitiesService.get']
 
-def useCaching(host='dev-indexer-s1', port=9160, keyspace='nlp'):
-    ''' Invoke this to set REDIS_CLIENT and enable caching on these services
-    :param host: redis server hostname
-    :param port: redis server port
-    :param db: redis db name
+def table(table=None):
+    ''' Access & mutate so we don't have globals in every function
+    :param table: An instance of boto.dyanmodb2.table.Table
     '''
-    global CASSANDRA_CLIENT
-    CASSANDRA_CLIENT = cql.connection.connect(host, port, keyspace)
+    global CACHE_TABLE
+    if table:
+        CACHE_TABLE = table
+    return CACHE_TABLE
+
+
+def useCaching():
+    ''' Invoke this to set CACHE_TABLE and enable caching on these services '''
+    table(Table('service_data'))
+    
 
 def purgeCacheForDoc(doc_id):
     ''' Remove all service responses for a given doc id
     :param doc_id: the document id. if it's a wiki id, you're basically removing all wiki-scoped caching
     '''
-    global CASSANDRA_CLIENT
-    cursor = CASSANDRA_CLIENT.cursor()
-    result = cursor.execute("SELECT signature FROM service_responses WHERE doc_id = :doc_id", params={'doc_id':doc_id})
-    deletes = [row[0] for row in cursor]
-    map(lambda x: cursor.execute("DELETE FROM service_responses WHERE signature = :signature", params={'signature':x[0]}), deletes)
+    with table().batch_write() as batch:
+        map(lambda x: batch.delete_item(doc_id=doc_id, service=x), CACHED_SERVICES)
+
     return True
 
 def purgeCacheForService(service_and_method):
     ''' Remove cached service responses for a given service
     :param service_and_method: the ServiceName.method
     '''
-    global CASSANDRA_CLIENT
-    cursor = CASSANDRA_CLIENT.cursor()
-    result = cursor.execute("SELECT signature FROM service_responses WHERE service = :service", params={'service':service_and_method})
-    deletes = [row[0] for row in cursor]
-    map(lambda x: cursor.execute("DELETE FROM service_responses WHERE signature = :signature", params={'signature':x[0]}), deletes)
+    with table().batch_write() as batch:
+        map(lambda x: x.delete(),
+            table().query(service__eq=service_and_method))
+
     return True
+
 
 def purgeCacheForWiki(wiki_id):
     ''' Remove cached service responses for a given wiki id
     :param wiki_id: the id of the wiki
     '''
-    global CASSANDRA_CLIENT
-    cursor = CASSANDRA_CLIENT.cursor()
-    result = cursor.execute("SELECT signature FROM service_responses WHERE wiki_id = :wiki_id", params={'wiki_id':wiki_id})
-    deletes = [row[0] for row in cursor]
-    map(lambda x: cursor.execute("DELETE FROM service_responses WHERE signature = :signature", params={'signature':x[0]}), deletes)
+    global CACHED_SERVICES
+
+    map(lambda y: map(lambda x: x.delete(), y), 
+        map(lambda z: table().query(service__eq=z, wiki_id__eq=int(wiki_id), index='wiki_id-index'), 
+            CACHED_SERVICES))
+
     return True
+
 
 def cachedServiceRequest(getMethod):
     ''' This is a decorator responsible for optionally memoizing a service response into the cache
     :param getMethod: the function we're wrapping -- should be a GET endpoint
     '''
     def invoke(self, *args, **kw):
-        global CASSANDRA_CLIENT
+
         doc_id = kw.get('doc_id', kw.get('wiki_id', None))
         if not doc_id:
             doc_id = args[0]
-        wiki_id = doc_id.split('_')[0]
+        wiki_id = int(doc_id.split('_')[0])
         service = str(self.__class__.__name__)+'.'+getMethod.func_name
-        if not CASSANDRA_CLIENT:
+        if not table():
             response = getMethod(self, *args, **kw)
         else:
-            cursor = CASSANDRA_CLIENT.cursor()
-            query = """
-                  SELECT response
-                  FROM service_responses
-                  WHERE signature = :signature
-            """
+            
             data = {'doc_id':doc_id, 'service':service, 'wiki_id':wiki_id}
-            signature = json.dumps({'service':service, 'doc_id':doc_id, 'wiki_id': wiki_id}) # could hash this
-            cursor.execute(query, params={'signature':signature})
-            result = cursor.fetchone()
-            if len(result) < 1 or result[0] is None:
+
+            results = [result for result in table().query(service__eq=service, doc_id__eq=doc_id)]
+
+            if len(results) == 0:
                 response = getMethod(self, *args, **kw)
                 if response['status'] == 200:
-                    insert = """
-                           INSERT INTO service_responses (signature, doc_id, service, wiki_id, response)
-                           VALUES (:signature, :doc_id, :service, :wiki_id, :response)
-                    """
-                    data['signature'] = signature
-                    data['response'] = json.dumps(response)
-                    cursor.execute(insert, params=data)
+                    data['response'] = json.dumps(response[doc_id])
+                    data['updated'] = int(time.time())
+                    item = Item(table(), data)
+                    item.save(overwrite=True)
             else:
-                response = json.loads(result[0])
+                response = dict(results[0])
+                response[doc_id] = json.loads(response['response'])
+                del response['response']
+
         return response
     return invoke

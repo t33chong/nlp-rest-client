@@ -1,5 +1,6 @@
 import sys
 from nlp_client import services, caching
+import json
 
 try:
     caching.useCaching()

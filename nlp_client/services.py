@@ -30,6 +30,7 @@ XML_PATH = '/data/xml/'
 SOLR_URL = 'http://search-s10:8983'
 
 MEMOIZED_WIKIS = {}
+MEMOIZED_JSON = {}
 
 class RestfulResource(restful.Resource):
     
@@ -74,17 +75,23 @@ class ParsedJsonService(RestfulResource):
     ''' Read-only service responsible for accessing XML and transforming it to JSON
     Uses the ParsedXmlService
     '''
-    @cachedServiceRequest
     def get(self, doc_id):
         ''' Returns document parse as JSON 
         :param doc_id: the id of the document in Solr
         '''
 
-        response = {}
-        xmlResponse = ParsedXmlService().get(doc_id)
-        if xmlResponse['status'] != 200:
-            return xmlResponse
-        return {'status':200, doc_id: xmltodict.parse(xmlResponse[doc_id])}
+        global MEMOIZED_JSON
+
+        response = MEMOIZED_JSON.get(doc_id, {})
+
+        if len(response) == 0:
+            xmlResponse = ParsedXmlService().get(doc_id)
+            if xmlResponse['status'] != 200:
+                return xmlResponse
+            MEMOIZED_JSON[doc_id] = {'status':200, doc_id: xmltodict.parse(xmlResponse[doc_id])}
+            response = MEMOIZED_JSON[doc_id]
+        
+        return response
 
 
 class CoreferenceCountsService(RestfulResource):
@@ -384,7 +391,7 @@ class TopEntitiesService(RestfulResource):
                            key=lambda item:int(item[1]), \
                            reverse=True)
 
-        return {'status': 200, wiki_id: dict(items[:50])}
+        return {'status': 200, wiki_id: items[:50]}
 
 
 class WikiEntitiesService(RestfulResource):
@@ -431,7 +438,6 @@ class WikiEntitiesService(RestfulResource):
 class ListDocIdsService(RestfulResource):
     
     ''' Service to expose resources in WikiDocumentIterator '''
-    @cachedServiceRequest
     def get(self, wiki_id, start=0, limit=None):
 
         xmlPath = '%s/%s/' % (XML_PATH, wiki_id)
