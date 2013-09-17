@@ -1,5 +1,4 @@
-from boto.dynamodb2.table import Table
-from boto.dynamodb2.items import Item
+import cql
 import json
 import time
 
@@ -8,27 +7,21 @@ Caching library -- basically memoizes stuff for now
 '''
 
 '''
-If this value gets initialized then we will start memoizing things witih DynamoDB
+If this value gets initialized then we will start memoizing things with Cassandra
 '''
-CACHE_TABLE = None
-
-''' Needed to enumerate, unfortunately '''
-CACHED_SERVICES = ['CoreferenceCountsService.get', 'AllNounPhrasesService.get', 'AllVerbPhrasesService.get', 
-                   'HeadsService.get', 'HeadsCountService.get', 'TopHeadsService.get', 'SentimentService.get',
-                   'AllTitlesService.get', 'RedirectsServices.get', 'EntitiesService.get', 'EntityCountsService.get',
-                   'TopEntitiesService.get', 'WikiEntitiesService.get']
+CACHE_DB = None
 
 WRITE_ONLY = False
 READ_ONLY = False
 
-def table(table = None):
+def db(new_db = None):
     ''' Access & mutate so we don't have globals in every function
-    :param table: An instance of boto.dyanmodb2.table.Table
+    :param new_db:cql connection
     '''
-    global CACHE_TABLE
-    if table:
-        CACHE_TABLE = table
-    return CACHE_TABLE
+    global CACHE_DB
+    if new_db:
+        CACHE_DB = new_db
+    return CACHE_DB
 
 
 def read_only(mutate = None):
@@ -51,12 +44,12 @@ def write_only(mutate = None):
     return WRITE_ONLY
 
 
-def useCaching(writeOnly = False, readOnly = False):
-    ''' Invoke this to set CACHE_TABLE and enable caching on these services 
+def useCaching(host='dev-indexer-s1', port=9160, keyspace='nlp', writeOnly = False, readOnly = False):
+    ''' Invoke this to set CACHE_DB and enable caching on these services 
     :param write_only: whether we should avoid reading from the cache
     :param read_only: whether we should avoid writing to the cache
     '''
-    table(Table('service_data'))
+    db(new_db=cql.connection.connect(host, port, keyspace))
     read_only(readOnly)
     write_only(writeOnly)
 
@@ -65,32 +58,47 @@ def purgeCacheForDoc(doc_id):
     ''' Remove all service responses for a given doc id
     :param doc_id: the document id. if it's a wiki id, you're basically removing all wiki-scoped caching
     '''
-    with table().batch_write() as batch:
-        map(lambda x: batch.delete_item(doc_id=doc_id, service=x), CACHED_SERVICES)
+    cursor = db().cursor()
+    result = cursor.execute("SELECT signature FROM service_responses WHERE doc_id = :doc_id", params={'doc_id':doc_id})
 
-    return True
+    return purgeCacheForSignatures([result[0] for result in cursor])
 
 
 def purgeCacheForService(service_and_method):
     ''' Remove cached service responses for a given service
     :param service_and_method: the ServiceName.method
     '''
-    with table().batch_write() as batch:
-        map(lambda x: x.delete(),
-            table().query(service__eq=service_and_method))
-
-    return True
+    cursor = db().cursor()
+    cursor.execute("SELECT signature FROM service_responses WHERE service = :service", params={'service':service_and_method})
+    return purgeCacheForSignatures([result[0] for result in cursor])
 
 
 def purgeCacheForWiki(wiki_id):
     ''' Remove cached service responses for a given wiki id
     :param wiki_id: the id of the wiki
     '''
-    global CACHED_SERVICES
+    cursor = db().cursor()
+    cursor.execute("SELECT signature FROM service_responses WHERE wiki_id = :wiki_id", params={'wiki_id':wiki_id})
+        
+    return purgeCacheForSignatures([result[0] for result in cursor])
 
-    map(lambda y: map(lambda x: x.delete(), y), 
-        map(lambda z: table().query(service__eq=z, wiki_id__eq=int(wiki_id), index='wiki_id-index'), 
-            CACHED_SERVICES))
+
+def purgeCacheForSignatures(signatures):
+    ''' Bulk delete for multiple signatures
+    :param signatures: list of signatures
+    '''
+    prepared = []
+    counter = 1
+    params = {}
+
+    for signature in signatures:
+        currkey = "signature"+str(counter)
+        prepared += [':'+currkey]
+        params[currkey] = signature
+        counter += 1
+        if counter % 20 == 0:
+            cursor.execute("DELETE FROM service_responses WHERE signature IN (%s)" % (", ".join(prepared)), params=params)
+            prepared, params = [], {}
 
     return True
 
@@ -101,7 +109,8 @@ def cachedServiceRequest(getMethod):
     '''
     def invoke(self, *args, **kw):
 
-        if not table():
+        connection = db()
+        if not connection:
             response = getMethod(self, *args, **kw)
 
         else:
@@ -112,22 +121,34 @@ def cachedServiceRequest(getMethod):
             service = str(self.__class__.__name__)+'.'+getMethod.func_name
             
             data = {'doc_id':doc_id, 'service':service, 'wiki_id':wiki_id}
+            signature = json.dumps(data)
 
-            results = []
+            cursor = connection.cursor()
+
+            result = None
             if not write_only():
-                results = [result for result in table().query(service__eq=service, doc_id__eq=doc_id)]
+                query = """
+                      SELECT response
+                      FROM service_responses
+                      WHERE signature = :signature
+                """
+                if cursor.execute(query, params={'signature':signature}):
+                    result = cursor.fetchone()
 
-            if len(results) == 0:
+            if len(result) < 1 or result[0] is None:
                 response = getMethod(self, *args, **kw)
                 if response['status'] == 200 and not read_only():
-                    data['response'] = json.dumps(response[doc_id])
-                    data['updated'] = int(time.time())
-                    item = Item(table(), data)
-                    item.save(overwrite=True)
+                    insert = """
+                           INSERT INTO service_responses (signature, doc_id, service, wiki_id, response, last_updated)
+                           VALUES (:signature, :doc_id, :service, :wiki_id, :response, :last_updated)
+                    """
+                    data['signature'] = signature
+                    data['response'] = json.dumps(response)
+                    data['last_updated'] = int(time.time())
+                    cursor.execute(insert, params=data)
+
             else:
-                response = dict(results[0])
-                response[doc_id] = json.loads(response['response'])
-                del response['response']
+                response = json.loads(result[0])
 
         return response
     return invoke

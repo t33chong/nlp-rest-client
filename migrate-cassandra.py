@@ -17,7 +17,8 @@ roll_forward = [ \
              doc_id varchar,
              service varchar,
              wiki_id int,
-             response text
+             response text,
+             last_updated int
            );""",
            "CREATE INDEX ON service_responses (wiki_id);",
            "CREATE INDEX ON service_responses (service);",
