@@ -1,14 +1,12 @@
-from boto.ec2.autoscale import AutoScaleConnection
+from boto.ec2.autoscale import connect_to_region as connect_autoscale_to
 from boto.ec2.autoscale import AutoScalingGroup
 from boto.ec2.autoscale import LaunchConfiguration
 from boto.ec2.autoscale import ScalingPolicy
-from boto.ec2.cloudwatch import MetricAlarm
-from boto import connect_cloudwatch
 
 from optparse import OptionParser
 
 AMI = 'ami-18a23d28'
-GROUP_NAME = 'parser_puller'
+GROUP_NAME = 'parser_poller'
 DEFAULT_MIN = 4
 DEFAULT_MAX = 25
 
@@ -23,16 +21,27 @@ parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
                   help='The autoscale group name to operate over')
 parser.add_option('-a', '--ami', dest='ami', default=AMI,
                   help='The AMI to use, if creating a group')
+parser.add_option('-r', '--rebuild', dest='rebuild', action='store_true', default=False,
+                  help='Whether to rebuild the group (deletes the old group)')
+parser.add_option('-c', '--create', dest='create', action='store_true', default=False,
+                  help='Whether to create the group for the first time')
+parser.add_option('-x', '--destroy', dest='destroy', action='store_true', default=False,
+                  help='Whether to destroy the group without rebuilding')
+parser.add_option('-z', '--delete', dest='destroy', action='store_true', default=False,
+                  help='Whether to destroy the group without rebuilding')
+
 (options, args) = parser.parse_args()
 
-conn = AutoScaleConnection()
-groups = filter(lambda x:group.name == GROUP_NAME, conn.get_all_groups())
+conn = connect_autoscale_to('us-west-2')
+lcname = options.group+'_config'
+groups = filter(lambda x:x.name == GROUP_NAME, conn.get_all_groups())
 group = groups[0] if groups else None
 
-if group is None:
-    #oh, looks like we're creating this group
-    lc = LaunchConfiguration(name=options.group+'_config',
-                             image_id=AMI,
+def create_group():
+    global conn, lcname
+
+    lc = LaunchConfiguration(name=lcname,
+                             image_id=options.ami,
                              key_name='relwellnlp',
                              security_groups=['sshable'])
 
@@ -40,26 +49,32 @@ if group is None:
 
     min = options.min if options.min is not None else DEFAULT_MIN
     max = options.max if options.max is not None else DEFAULT_MAX
-    group = AutoScalingGroup(group_name=option.group,
-                             availability_zones=['us-west-2'],
+    group = AutoScalingGroup(group_name=options.group,
+                             availability_zones=['us-west-2b'],
                              launch_config=lc,
                              min_size=min,
                              max_size=max,
                              connection=conn)
 
+    conn.create_auto_scaling_group(group)
+
     scale_up_policy = ScalingPolicy(
             name='scale_up', adjustment_type='ChangeInCapacity',
-            as_name='my_group', scaling_adjustment=1, cooldown=180)
+            as_name=options.group, scaling_adjustment=1, cooldown=180)
 
     scale_down_policy = ScalingPolicy(
             name='scale_down', adjustment_type='ChangeInCapacity',
-            as_name='my_group', scaling_adjustment=-1, cooldown=180)
+            as_name=options.group, scaling_adjustment=-1, cooldown=180)
 
     conn.create_scaling_policy(scale_up_policy)
     conn.create_scaling_policy(scale_down_policy)
 
-    cloudwatch = connect_cloudwatch()
-    alarm_dimensions = {"AutoScalingGroupName": option.group}
+    scale_up_policy = conn.get_all_policies(as_group=options.group, policy_names=['scale_up'])[0]
+    scale_down_policy = conn.get_all_policies(as_group=options.group, policy_names=['scale_down'])[0]
+
+    cloudwatch = connect_cloudwatch_to('us-east-1')
+    
+    alarm_dimensions = {"AutoScalingGroupName": options.group}
     scale_up_alarm = MetricAlarm(
             name='scale_up_on_cpu', namespace='AWS/EC2',
             metric='CPUUtilization', statistic='Average',
@@ -78,15 +93,39 @@ if group is None:
             dimensions=alarm_dimensions)
 
     cloudwatch.create_alarm(scale_down_alarm)
-else:
-    #okay, the group already exists, so apply all desired changes
+
+
+
+if group and options.rebuild or options.destroy:
+    map(lambda x: x.delete(), conn.get_all_policies(options.group))
+    try:
+        group.shutdown_instances()
+    except:
+        pass
+    conn.delete_auto_scaling_group(options.group, force_delete=True)
+
+if options.rebuild or options.destroy:
+    conn.delete_launch_configuration(lcname) 
+
+if options.create or options.rebuild:
+    create_group()
+
+if not options.create and not options.rebuild and not options.destroy:
+    # we're just modifying a group
+    happened = False
     if options.desired:
+        happened = True
         group.set_capacity(options.desired)
     
     if options.min:
+        happened = True
         group.min_size = options.min
 
     if options.max:
+        happened = True
         group.max_size = options.max
 
-    group.update()
+    if happened:
+        group.update()
+    else:
+        print "Nothing happened. Use --help to figure out how to use this script."
