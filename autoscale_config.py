@@ -69,31 +69,6 @@ def create_group():
     conn.create_scaling_policy(scale_up_policy)
     conn.create_scaling_policy(scale_down_policy)
 
-    scale_up_policy = conn.get_all_policies(as_group=options.group, policy_names=['scale_up'])[0]
-    scale_down_policy = conn.get_all_policies(as_group=options.group, policy_names=['scale_down'])[0]
-
-    cloudwatch = connect_cloudwatch_to('us-east-1')
-    
-    alarm_dimensions = {"AutoScalingGroupName": options.group}
-    scale_up_alarm = MetricAlarm(
-            name='scale_up_on_cpu', namespace='AWS/EC2',
-            metric='CPUUtilization', statistic='Average',
-            comparison='>', threshold='70',
-            period='60', evaluation_periods=2,
-            alarm_actions=[scale_up_policy.policy_arn],
-            dimensions=alarm_dimensions)
-    cloudwatch.create_alarm(scale_up_alarm)
-
-    scale_down_alarm = MetricAlarm(
-            name='scale_down_on_cpu', namespace='AWS/EC2',
-            metric='CPUUtilization', statistic='Average',
-            comparison='<', threshold='40',
-            period='60', evaluation_periods=2,
-            alarm_actions=[scale_down_policy.policy_arn],
-            dimensions=alarm_dimensions)
-
-    cloudwatch.create_alarm(scale_down_alarm)
-
 
 
 if group and options.rebuild or options.destroy:

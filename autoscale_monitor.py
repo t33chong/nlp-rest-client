@@ -27,12 +27,12 @@ parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
 (options, args) = parser.parse_args()
 
 conn = connect_s3()
-bucket = conn.bucket('nlp-data')
+bucket = conn.get_bucket('nlp-data')
 autoscale = connect_to_region('us-west-2')
 
 while True:
-    group = autoscale.get_all_groups(options.group)[0]
-    inqueue = len(bucket.list(QUEUES[options.group]))
+    group = autoscale.get_all_groups(names=[options.group])[0]
+    inqueue = len([k for k in bucket.list(QUEUES[options.group])]) - 1 #because it lists itself, #lame
 
     numinstances = len([i for i in group.instances]) # stupid resultset object
 
@@ -40,7 +40,11 @@ while True:
 
     if group.max_size < numinstances and above_threshold:
         autoscale.execute_policy('scale_up', options.group)
+        print "[%s] Scaled up to %d" % (group.name, numinstances + 1)
     elif not above_threshold and numinstances > group.desired_capacity:
         autoscale.execute_policy('scale_down', options.group)
+        print "[%s] Scaled back down to %d", (group.name, numinstances - 1)
+    else:
+        print "[%s] Just chillin' (%d in queue, %d instances)" % (group.name, inqueue, numinstances)
 
     sleep(60)
