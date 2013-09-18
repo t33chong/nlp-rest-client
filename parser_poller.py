@@ -22,7 +22,7 @@ CORENLP_DIR = '/home/ubuntu/corenlp/'
 JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar', 
         'xom.jar', 'joda-time.jar', 'jollyday.jar']
 
-conn = S3Connection()
+conn = connect_s3()
 bucket = conn.get_bucket(BUCKET_NAME)
 
 while True:
