@@ -11,7 +11,7 @@ import shutil
 import time
 import subprocess
 
-SIG = os.getpid() + '_' + int(time.time())
+SIG = str(os.getpid()) + '_' + str(int(time.time()))
 TEXT_DIR = '/tmp/text/'
 XML_DIR = '/tmp/xml/'
 SIG_DIR = '/tmp/text/'+SIG
