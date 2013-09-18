@@ -170,6 +170,19 @@ class EntityOverseer(Overseer):
                  self.csv.write(self.processes[pkey].stdout.read())
                  del self.processes[pkey], self.timings[pkey]
 
+class WriteOverseer(Overseer):
+    def setOptions(self, options={}):
+        self.options = options
+        credentials = {}
+        if os.path.exists(options['credentials']):
+            credentials = json.loads(open(options['credentials']).read())
+        self.key = credentials.get('key')
+        self.secret = credentials.get('secret')
+        self.local = options['local'] # write to AWS if 0, local if 1
+
+    def getIterator(self):
+        pass #TODO: return open(queryqueue).readlines()
+
 """
 Oversees the administration of backlink processes
 """

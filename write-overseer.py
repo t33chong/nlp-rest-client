@@ -1,0 +1,27 @@
+"""
+Responsible for iterating over wids in the XML directory and writing entity data
+collected from harvester subprocesses to file.
+"""
+
+import json, socket
+from optparse import OptionParser
+import sys
+sys.path.append('..')
+from WikiaSolr.overseer import WriteOverseer
+
+nlp_config = json.loads(open('nlp-config.json').read())[socket.gethostname()]
+workers = nlp_config['workers']
+
+parser = OptionParser()
+parser.add_option("-v", "--verbose", dest="verbose", action="store", default=True,
+                  help="Shows verbose output")
+parser.add_option("-n", "--workers", dest="workers", action="store", default=workers,
+                  help="Specifies the number of open worker processes")
+parser.add_option("-c", "--credentials", dest="credentials", action="store", default="aws.json",
+                  help="Path to a JSON file containing AWS credentials")
+parser.add_option("-l", "--local", dest="local", action="store_true", default=0,
+                  help="Specify whether to write text files to a local directory; int as boolean")
+
+(options, args) = parser.parse_args()
+
+WriteOverseer(vars(options)).oversee()
