@@ -7,26 +7,26 @@ from boto import connect_cloudwatch
 
 from optparse import OptionParser
 
-AMI = 'ami-eafd62da'
+AMI = 'ami-18a23d28'
 GROUP_NAME = 'parser_puller'
 DEFAULT_MIN = 4
 DEFAULT_MAX = 25
 
 parser = OptionParser()
 parser.add_option('-m', '--max', dest='max', default=None,
-                  'Update the max number of instances for the group')
+                  help='Update the max number of instances for the group')
 parser.add_option('-n', '--min', dest='min', default=None,
-                  'Update the min number of instances for the group')
+                  help='Update the min number of instances for the group')
 parser.add_option('-d', '--desired', dest='desired', default=None,
-                  'Change the desired capacity of the group')
+                  help='Change the desired capacity of the group')
 parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
-                  'The autoscale group name to operate over')
-parser.add_option('a', '--ami', dest='ami', default=AMI,
-                  'The AMI to use, if creating a group')
-(options, args) = parser.parser_args()
+                  help='The autoscale group name to operate over')
+parser.add_option('-a', '--ami', dest='ami', default=AMI,
+                  help='The AMI to use, if creating a group')
+(options, args) = parser.parse_args()
 
 conn = AutoScaleConnection()
-groups = filter(lambda x:group.name == GROUP_NAME, connection.get_all_groups())
+groups = filter(lambda x:group.name == GROUP_NAME, conn.get_all_groups())
 group = groups[0] if groups else None
 
 if group is None:
@@ -41,7 +41,7 @@ if group is None:
     min = options.min if options.min is not None else DEFAULT_MIN
     max = options.max if options.max is not None else DEFAULT_MAX
     group = AutoScalingGroup(group_name=option.group,
-                             availability_zones=['us-west-1']
+                             availability_zones=['us-west-2'],
                              launch_config=lc,
                              min_size=min,
                              max_size=max,
