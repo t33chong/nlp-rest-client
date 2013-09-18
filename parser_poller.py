@@ -91,4 +91,4 @@ while True:
         # at this point we will need to get the list of keys all over again
         # yes this is actually the most sensible way to handle it based on the resultset api.
         break
-
+    sleep(30) # don't want to bug the crap outta amazon
