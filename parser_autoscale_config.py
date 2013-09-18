@@ -5,28 +5,47 @@ from boto.ec2.autoscale import ScalingPolicy
 from boto.ec2.cloudwatch import MetricAlarm
 from boto import connect_cloudwatch
 
+from optparse import OptionParser
+
 AMI = 'ami-eafd62da'
-GROUP_NAME = 'parser_pullers'
+GROUP_NAME = 'parser_puller'
+DEFAULT_MIN = 4
+DEFAULT_MAX = 25
+
+parser = OptionParser()
+parser.add_option('-m', '--max', dest='max', default=None,
+                  'Update the max number of instances for the group')
+parser.add_option('-n', '--min', dest='min', default=None,
+                  'Update the min number of instances for the group')
+parser.add_option('-d', '--desired', dest='desired', default=None,
+                  'Change the desired capacity of the group')
+parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
+                  'The autoscale group name to operate over')
+parser.add_option('a', '--ami', dest='ami', default=AMI,
+                  'The AMI to use, if creating a group')
+(options, args) = parser.parser_args()
 
 conn = AutoScaleConnection()
+groups = filter(lambda x:group.name == GROUP_NAME, connection.get_all_groups())
+group = groups[0] if groups else None
 
-groups = connection.get_all_groups()
-
-if GROUP_NAME not in [group.name for group in groups]:
-    lc = LaunchConfiguration(name='parser_puller_config',
+if group is None:
+    #oh, looks like we're creating this group
+    lc = LaunchConfiguration(name=options.group+'_config',
                              image_id=AMI,
                              key_name='relwellnlp',
                              security_groups=['sshable'])
 
     conn.create_launch_configuration(lc)
 
-    group = AutoScalingGroup(group_name='parser_pullers',
+    min = options.min if options.min is not None else DEFAULT_MIN
+    max = options.max if options.max is not None else DEFAULT_MAX
+    group = AutoScalingGroup(group_name=option.group,
                              availability_zones=['us-west-1']
                              launch_config=lc,
-                             min_size=4,
-                             max_size=25,
+                             min_size=min,
+                             max_size=max,
                              connection=conn)
-
 
     scale_up_policy = ScalingPolicy(
             name='scale_up', adjustment_type='ChangeInCapacity',
@@ -40,7 +59,7 @@ if GROUP_NAME not in [group.name for group in groups]:
     conn.create_scaling_policy(scale_down_policy)
 
     cloudwatch = connect_cloudwatch()
-    alarm_dimensions = {"AutoScalingGroupName": 'parser_pullers'}
+    alarm_dimensions = {"AutoScalingGroupName": option.group}
     scale_up_alarm = MetricAlarm(
             name='scale_up_on_cpu', namespace='AWS/EC2',
             metric='CPUUtilization', statistic='Average',
@@ -59,3 +78,15 @@ if GROUP_NAME not in [group.name for group in groups]:
             dimensions=alarm_dimensions)
 
     cloudwatch.create_alarm(scale_down_alarm)
+else:
+    #okay, the group already exists, so apply all desired changes
+    if options.desired:
+        group.set_capacity(options.desired)
+    
+    if options.min:
+        group.min_size = options.min
+
+    if options.max:
+        group.max_size = options.max
+
+    group.update()
