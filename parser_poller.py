@@ -7,7 +7,7 @@ from boto.s3.key import Key
 from boto.exception import S3ResponseError
 import tarfile
 import os
-import shutils
+import shutil
 import time
 import subprocess
 
@@ -17,6 +17,8 @@ XML_DIR = '/tmp/xml/'
 SIG_DIR = '/tmp/text/'+SIG
 FILELIST_DIR = '/tmp/filelist/'
 BUCKET_NAME = 'nlp-data'
+CORENLP_DIR = '/home/ubuntu/corenlp/'
+
 JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar', 
         'xom.jar', 'joda-time.jar', 'jollyday.jar']
 
@@ -61,7 +63,8 @@ while True:
             filelist.write("\n".join(name for name in os.listdir(SIG_DIR)))
 
         # send it to corenlp
-        subprocess.call(['java', '-cp', ':'.join(JARS), 'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
+        subprocess.call(['java', '-cp', ':'.join([CORENLP_DIR+j for j in JARS]),
+                         'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
                          '-filelist',  filelistname, 
                          '-outputDirectory', XML_DIR,
                          '-threads', 8])
@@ -81,9 +84,9 @@ while True:
         event_key.set_contents_from_string("\n".join(data_events))
 
         # delete remnant data with extreme prejudice
-        shutils.rmtree(XML_DIR)
-        shutils.rmtree(TEXT_DIR)
-        shutils.rmtree(FILELIST_DIR)
+        shutil.rmtree(XML_DIR)
+        shutil.rmtree(TEXT_DIR)
+        shutil.rmtree(FILELIST_DIR)
 
         # at this point we will need to get the list of keys all over again
         # yes this is actually the most sensible way to handle it based on the resultset api.
