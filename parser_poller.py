@@ -6,11 +6,12 @@ from boto import connect_s3
 from boto.s3.key import Key
 from boto.exception import S3ResponseError
 from time import time, sleep
+from socket import gethostname
+from subprocess import Popen
 import tarfile
 import os
 import shutil
 import sys
-import subprocess
 
 SIG = str(os.getpid()) + '_' + str(int(time()))
 TEXT_DIR = '/tmp/text/'
@@ -25,6 +26,7 @@ JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar',
 
 conn = connect_s3()
 bucket = conn.get_bucket(BUCKET_NAME)
+hostname = gethostname()
 
 while True:
     # start with fresh directories
@@ -38,6 +40,7 @@ while True:
             continue
 
         old_key_name = key.key
+        print "[%s] found key %s" % (hostname, old_key_name)
         # found a tar file, now try to capture it via move
         try:
             new_key_name = '/parser_processing/'+SIG+'.tgz'
@@ -65,23 +68,24 @@ while True:
             filelist.write("\n".join(SIG_DIR+'/'+f for f in os.listdir(SIG_DIR)))
 
         # send it to corenlp
-        returncode = subprocess.call(['java', '-cp', ':'.join([CORENLP_DIR+j for j in JARS]),
-                                      'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
-                                      '-filelist',  filelistname, 
-                                      '-outputDirectory', XML_DIR,
-                                      '-threads', '8'],
-                                     stdout=subprocess.STDOUT,
-                                     stederr=subprocess.STDOUT)
-        
-        if returncode != 0:
+        print "Running Parser"
+        parser = Popen(['java', '-cp', ':'.join([CORENLP_DIR+j for j in JARS]),
+                        'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
+                        '-filelist',  filelistname, 
+                        '-outputDirectory', XML_DIR,
+                        '-threads', '8'])
+        parser.wait()
+                       
+        if parser.returncode != 0:
+            print "[%s] error parsing text for %s" % (old_key_name)
             # back to queue
             returnkey = Key(bucket)
             returnkey.key = old_key_name
             returnkey.set_contents_from_file(newfname)
             newkey.delete()
-            # we should probably report this. for now, die.
             sys.exit()
 
+        print "[%s] successfully parsed text in %s" % (hostname, old_key_name)
         # send xml to s3, keep track of data extraction events
         data_events = []
         for xmlfile in os.listdir(XML_DIR):
