@@ -25,8 +25,6 @@ parser.add_option("-q", "--qqdir", dest="qqdir", action="store", default="/data/
                   help="Path to directory containing query queue files")
 parser.add_option("-p", "--processing", dest="processing", action="store", default="/data/processing",
                   help="Path to processing directory")
-#parser.add_option("-q", "--query", dest="query", action="store", default=None,
-#                  help="Path to query queue file")
 
 (options, args) = parser.parse_args()
 
