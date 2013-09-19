@@ -43,7 +43,7 @@ while True:
 
     # shut this instance down if we have an empty queue and we're above desired capacity
     if len(keys) == 0:
-        instances = [i for i in group.instances]
+        instances = [i for i in autoscale_group.instances]
         if group.desired_capacity < len(instances):
             print "[%s] Scaling down, shutting down." % hostname
             current_id = get_instance_metadata()['instance-id']
