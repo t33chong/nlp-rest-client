@@ -21,6 +21,12 @@ parser.add_option("-c", "--credentials", dest="credentials", action="store", def
                   help="Path to a JSON file containing AWS credentials")
 parser.add_option("-l", "--local", dest="local", action="store_true", default=0,
                   help="Specify whether to write text files to a local directory; int as boolean")
+parser.add_option("-q", "--qqdir", dest="qqdir", action="store", default="/data/events",
+                  help="Path to directory containing query queue files")
+parser.add_option("-p", "--processing", dest="processing", action="store", default="/data/processing",
+                  help="Path to processing directory")
+#parser.add_option("-q", "--query", dest="query", action="store", default=None,
+#                  help="Path to query queue file")
 
 (options, args) = parser.parse_args()
 
