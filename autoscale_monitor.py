@@ -19,7 +19,7 @@ QUEUES = {
 }
 
 parser = OptionParser()
-parser.add_option('-t', '--threshold', dest='threshold', default=THRESHOLD,
+parser.add_option('-t', '--threshold', type='int', dest='threshold', default=THRESHOLD,
                   help='Acceptable amount of events per process we will tolerate being backed up on')
 parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
                   help='The autoscale group name to operate over')
@@ -36,9 +36,10 @@ while True:
 
     numinstances = len([i for i in group.instances]) # stupid resultset object
 
-    above_threshold = float(inqueue) / float(numinstances) > THRESHOLD
+    events_per_instance = (float(inqueue) / float(numinstances))
+    above_threshold =  events_per_instance > options.threshold
 
-    if group.max_size < numinstances and above_threshold:
+    if group.max_size > numinstances and above_threshold:
         autoscale.execute_policy('scale_up', options.group)
         print "[%s] Scaled up to %d" % (group.name, numinstances + 1)
     else:
