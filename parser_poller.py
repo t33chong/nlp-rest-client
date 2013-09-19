@@ -33,8 +33,9 @@ hostname = gethostname()
 autoscale = connect_autoscale_to(REGION)
 autoscale_group = None
 groups = autoscale.get_all_groups(names=[GROUP])
+
 if len(groups) > 0:
-    auto_scale_group = groups[0]
+    autoscale_group = groups[0]
 
 while True:
     # start with fresh directories
@@ -47,7 +48,7 @@ while True:
     # shut this instance down if we have an empty queue and we're above desired capacity
     if len(keys) == 0 and autoscale_group is not None:
         instances = [i for i in autoscale_group.instances]
-        if group.desired_capacity < len(instances):
+        if autoscale_group.desired_capacity < len(instances):
             print "[%s] Scaling down, shutting down." % hostname
             current_id = get_instance_metadata()['instance-id']
             filter(lambda x: x.id == current_id, instances)[0].terminate()
