@@ -52,7 +52,8 @@ while True:
         if DESIRED_CAPACITY < len(instances):
             print "[%s] Scaling down, shutting down." % hostname
             current_id = get_instance_metadata()['instance-id']
-            filter(lambda x: x.instance_id == current_id, instances)[0].terminate()
+            if len(filter(lambda x: x.instance_id == current_id, instances)) == 1:
+                autoscale.terminate_instance(current_id)
             sys.exit()
 
     # iterating over keys in case we try to grab a key that another instance scoops
