@@ -31,7 +31,10 @@ conn = connect_s3()
 bucket = conn.get_bucket(BUCKET_NAME)
 hostname = gethostname()
 autoscale = connect_autoscale_to(REGION)
-autoscale_group = autoscale.get_all_groups(names=[GROUP])[0]
+autoscale_group = None
+groups = autoscale.get_all_groups(names=[GROUP])
+if len(groups) > 0:
+    auto_scale_group = groups[0]
 
 while True:
     # start with fresh directories
@@ -42,7 +45,7 @@ while True:
     keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
 
     # shut this instance down if we have an empty queue and we're above desired capacity
-    if len(keys) == 0:
+    if len(keys) == 0 and autoscale_group is not None:
         instances = [i for i in autoscale_group.instances]
         if group.desired_capacity < len(instances):
             print "[%s] Scaling down, shutting down." % hostname
