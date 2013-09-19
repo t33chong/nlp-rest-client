@@ -69,7 +69,9 @@ while True:
                                       'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
                                       '-filelist',  filelistname, 
                                       '-outputDirectory', XML_DIR,
-                                      '-threads', '8'])
+                                      '-threads', '8'],
+                                     stdout=subprocess.STDOUT,
+                                     stederr=subprocess.STDOUT)
         
         if returncode != 0:
             # back to queue
