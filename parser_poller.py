@@ -23,6 +23,7 @@ BUCKET_NAME = 'nlp-data'
 CORENLP_DIR = '/home/ubuntu/corenlp/'
 GROUP = 'parser_poller'
 REGION = 'us-west-2'
+DESIRED_CAPACITY = 4
 
 JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar', 
         'xom.jar', 'joda-time.jar', 'jollyday.jar']
@@ -48,10 +49,10 @@ while True:
     # shut this instance down if we have an empty queue and we're above desired capacity
     if len(keys) == 0 and autoscale_group is not None:
         instances = [i for i in autoscale_group.instances]
-        if autoscale_group.desired_capacity < len(instances):
+        if DESIRED_CAPACITY < len(instances):
             print "[%s] Scaling down, shutting down." % hostname
             current_id = get_instance_metadata()['instance-id']
-            filter(lambda x: x.id == current_id, instances)[0].terminate()
+            filter(lambda x: x.instance_id == current_id, instances)[0].terminate()
             sys.exit()
 
     # iterating over keys in case we try to grab a key that another instance scoops
