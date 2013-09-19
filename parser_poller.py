@@ -88,7 +88,9 @@ while True:
 
         # send it to corenlp
         print "Running Parser"
-        parser = Popen(['java', '-cp', ':'.join([CORENLP_DIR+j for j in JARS]),
+        parser = Popen(['java', 
+                        '-Xmx60G', #assuming 68G memory on m2.4xlarge, 8G for memory leaks, etc.
+                        '-cp', ':'.join([CORENLP_DIR+j for j in JARS]),
                         'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
                         '-filelist',  filelistname, 
                         '-outputDirectory', XML_DIR,
@@ -96,7 +98,7 @@ while True:
         parser.wait()
                        
         if parser.returncode != 0:
-            print "[%s] error parsing text for %s" % (old_key_name)
+            print "[%s] error parsing text for %s" % (hostname, old_key_name)
             # back to queue
             returnkey = Key(bucket)
             returnkey.key = old_key_name
