@@ -8,7 +8,7 @@ def clean_list(text):
     for sentence in PunktSentenceTokenizer().tokenize(text):
         if len(sentence.split(' ')) < 50:
             if bullet1 not in sentence and bullet2 not in sentence:
-                usable.append(sentence.encode('utf-8'))
+                cleaned.append(sentence.encode('utf-8'))
     return cleaned
 
 def ensure_dir_exists(directory):
