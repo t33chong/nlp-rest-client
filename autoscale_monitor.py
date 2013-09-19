@@ -41,9 +41,6 @@ while True:
     if group.max_size < numinstances and above_threshold:
         autoscale.execute_policy('scale_up', options.group)
         print "[%s] Scaled up to %d" % (group.name, numinstances + 1)
-    elif not above_threshold and numinstances > group.desired_capacity:
-        autoscale.execute_policy('scale_down', options.group)
-        print "[%s] Scaled back down to %d", (group.name, numinstances - 1)
     else:
         print "[%s] Just chillin' (%d in queue, %d instances)" % (group.name, inqueue, numinstances)
 

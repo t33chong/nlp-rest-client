@@ -43,6 +43,7 @@ def create_group():
     lc = LaunchConfiguration(name=lcname,
                              image_id=options.ami,
                              key_name='relwellnlp',
+                             instance_type='c1.xlarge',
                              security_groups=['sshable'])
 
     conn.create_launch_configuration(lc)

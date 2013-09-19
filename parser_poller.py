@@ -1,10 +1,11 @@
 """
 This script polls S3 to find new text batches to parse.
 """
-
-from boto import connect_s3
+from boto import connect_s3, connect_ec2
 from boto.s3.key import Key
+from boto.ec2.autoscale import connect_to_region as connect_autoscale_to
 from boto.exception import S3ResponseError
+from boto.utils import get_instance_metadata
 from time import time, sleep
 from socket import gethostname
 from subprocess import Popen
@@ -20,6 +21,8 @@ SIG_DIR = '/tmp/text/'+SIG
 FILELIST_DIR = '/tmp/filelist/'
 BUCKET_NAME = 'nlp-data'
 CORENLP_DIR = '/home/ubuntu/corenlp/'
+GROUP = 'parser_poller'
+REGION = 'us-west-2'
 
 JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar', 
         'xom.jar', 'joda-time.jar', 'jollyday.jar']
@@ -27,6 +30,8 @@ JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar',
 conn = connect_s3()
 bucket = conn.get_bucket(BUCKET_NAME)
 hostname = gethostname()
+autoscale = connect_autoscale_to(REGION)
+autoscale_group = autoscale.get_all_groups(names=[GROUP])[0]
 
 while True:
     # start with fresh directories
@@ -34,11 +39,19 @@ while True:
         if not os.path.exists(directory):
             os.mkdir(directory)
 
-    for key in bucket.list('text_events'):
-        if not key.key.endswith('.tgz'):
-            # we only want gz-formatted tarballs
-            continue
+    keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
 
+    # shut this instance down if we have an empty queue and we're above desired capacity
+    if len(keys) == 0:
+        instances = [i for i in group.instances]
+        if group.desired_capacity < len(instances):
+            print "[%s] Scaling down, shutting down." % hostname
+            current_id = get_instance_metadata()['instance-id']
+            filter(lambda x: x.id == current_id, instances)[0].terminate()
+            sys.exit()
+
+    # iterating over keys in case we try to grab a key that another instance scoops
+    for key in keys:
         old_key_name = key.key
         print "[%s] found key %s" % (hostname, old_key_name)
         # found a tar file, now try to capture it via move
@@ -106,7 +119,6 @@ while True:
         shutil.rmtree(TEXT_DIR)
         shutil.rmtree(FILELIST_DIR)
 
-        # at this point we will need to get the list of keys all over again
-        # yes this is actually the most sensible way to handle it based on the resultset api.
+        # at this point we want to get the list of keys all over again
         break
     sleep(30) # don't want to bug the crap outta amazon
