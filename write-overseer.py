@@ -17,10 +17,8 @@ parser.add_option("-v", "--verbose", dest="verbose", action="store", default=Tru
                   help="Shows verbose output")
 parser.add_option("-n", "--workers", dest="workers", action="store", default=workers,
                   help="Specifies the number of open worker processes")
-parser.add_option("-c", "--credentials", dest="credentials", action="store", default="aws.json",
-                  help="Path to a JSON file containing AWS credentials")
-parser.add_option("-l", "--local", dest="local", action="store_true", default=0,
-                  help="Specify whether to write text files to a local directory; int as boolean")
+parser.add_option("-a", "--aws", dest="aws", action="store", default=0,
+                  help="Specify whether to write text files to Amazon S3; int as boolean")
 parser.add_option("-q", "--qqdir", dest="qqdir", action="store", default="/data/events",
                   help="Path to directory containing query queue files")
 parser.add_option("-p", "--processing", dest="processing", action="store", default="/data/processing",
