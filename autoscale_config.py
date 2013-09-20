@@ -5,7 +5,7 @@ from boto.ec2.autoscale import ScalingPolicy
 
 from optparse import OptionParser
 
-AMI = 'ami-9c50cfac'
+AMI = 'ami-bc40df8c'
 GROUP_NAME = 'parser_poller'
 DEFAULT_MIN = 4
 DEFAULT_MAX = 25
@@ -43,7 +43,7 @@ def create_group():
     lc = LaunchConfiguration(name=lcname,
                              image_id=options.ami,
                              key_name='relwellnlp',
-                             instance_type='c1.xlarge',
+                             instance_type='m2.4xlarge',
                              security_groups=['sshable'])
 
     conn.create_launch_configuration(lc)
