@@ -1,6 +1,5 @@
 """
-Responsible for iterating over wids in the XML directory and writing entity data
-collected from harvester subprocesses to file.
+Responsible for iterating over query queue files and spawning write-harvesters.
 """
 
 import json, socket
