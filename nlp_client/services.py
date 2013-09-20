@@ -24,17 +24,18 @@ This module contains all services used in our RESTful client.
 At this point, they are all read-only, and only respond to GET.
 '''
 
-S3_CONNECTION = None
+S3_BUCKET = None
 
-def get_s3_connection():
+def get_s3_bucket():
     '''
     Accesses an S3 connection for us, memoized
     :return: s3 connection
     :rtype :class:boto.s3.connection.S3Connection
     '''
-    if S3_CONNECTION is None:
-        S3_CONNECTION = connect_s3()
-    return S3_CONNECTION
+    global S3_BUCKET
+    if S3_BUCKET is None:
+        S3_BUCKET = connect_s3().get_bucket('nlp-data')
+    return S3_BUCKET
 
 
 XML_PATH = '/data/xml/'
@@ -72,8 +73,7 @@ class ParsedXmlService(RestfulResource):
         ''' Returns a response with the XML of the parsed text
         :param doc_id: the id of the document in Solr
         '''
-        conn = get_s3_connection()
-        bucket = conn.get_bucket('nlp-data')
+        bucket = get_s3_bucket()
         key = Key(bucket)
         key.key = '%s/%s.xml' % tuple(doc_id.split('_'))
         if key.exists():
@@ -494,11 +494,13 @@ class ArticleDocIdIterator:
         ''' Constructor method 
         :param wid: the wiki ID we want to iterate over
         '''
+        bucket = get_s3_bucket()
         self.wid = wid
         self.counter = 0
-        self.files = [wid+'_'+xmlFile.split('.')[0] for xmlFiles in listdir('%s/%s' % (XML_PATH, str(wid))) \
-                          for xmlFile in listdir('%s/%s/%s' % (XML_PATH, str(wid), xmlFiles))]
-        self.files.sort() #why not?
+        def id_from_key(x):
+            split = x.split('/')
+            return "%s_%s" % (split[-2], split[-1].replace('.xml', ''))
+        self.keys = [id_from_key(key.key) for key in bucket.get_all_keys(prefix='xml/'+str(wid)) if key.key.endswith('.xml')]
 
     def __iter__(self):
         ''' Iterator method '''
@@ -508,14 +510,16 @@ class ArticleDocIdIterator:
         ''' Allows array access 
         :param index: int value of index
         '''
-        return self.files[index]
+        return self.keys[index]
 
     def next(self):
         ''' Get next article ID '''
-        if self.counter == len(self.files):
+        if self.counter == len(self.keys):
             raise StopIteration
         self.counter += 1
-        return self.files[self.counter - 1]
+        return self.keys[self.counter-1]
+        
+
 
 
 def sanitizePhrase(phrase):

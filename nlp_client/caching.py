@@ -110,7 +110,7 @@ def cachedServiceRequest(getMethod):
     def invoke(self, *args, **kw):
 
         connection = db()
-        if not connection:
+        if connection is None:
             response = getMethod(self, *args, **kw)
 
         else:
