@@ -5,6 +5,8 @@ from os import path, listdir
 from gzip import open as gzopen
 from caching import cachedServiceRequest
 from mrg_utils import Sentence as MrgSentence
+from boto import connect_s3
+from boto.s3.key import Key
 import time
 import title_confirmation
 import cql
@@ -17,12 +19,23 @@ import types
 import json
 import sys
 
-
-
 '''
 This module contains all services used in our RESTful client.
 At this point, they are all read-only, and only respond to GET.
 '''
+
+S3_CONNECTION = None
+
+def get_s3_connection():
+    '''
+    Accesses an S3 connection for us, memoized
+    :return: s3 connection
+    :rtype :class:boto.s3.connection.S3Connection
+    '''
+    if S3_CONNECTION is None:
+        S3_CONNECTION = connect_s3()
+    return S3_CONNECTION
+
 
 XML_PATH = '/data/xml/'
 
@@ -48,8 +61,29 @@ class RestfulResource(restful.Resource):
 class ParsedXmlService(RestfulResource):
 
     ''' Read-only service responsible for accessing XML from FS '''
-    
     def get(self, doc_id):
+        ''' Right now just points to new s3 method, just didn't want to remove the old logic just yet.
+        :param doc_id: the doc id
+        '''
+        return self.get_from_s3(doc_id)
+
+
+    def get_from_s3(self, doc_id):
+        ''' Returns a response with the XML of the parsed text
+        :param doc_id: the id of the document in Solr
+        '''
+        conn = get_s3_connection()
+        bucket = conn.get_bucket('nlp-data')
+        key = Key(bucket)
+        key.key = '%s/%s.xml' % tuple(doc_id.split('_'))
+        if key.exists():
+            response = {'status': 200, doc_id:key.get_contents_as_string()}
+        else:
+            response = {'status': 500, 'message': 'Key does not exist'}
+        return response
+
+
+    def get_from_file(self, doc_id):
         ''' Return a response with the XML of the parsed text 
         :param doc_id: the id of the document in Solr
         '''
