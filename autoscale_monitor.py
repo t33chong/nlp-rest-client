@@ -2,6 +2,7 @@ from boto import connect_s3
 from boto.ec2.autoscale import connect_to_region
 from optparse import OptionParser
 from time import sleep
+from datetime import datetime
 
 """
 Monitors the workload in specific intervals and scales up or down
@@ -40,9 +41,12 @@ while True:
     above_threshold =  events_per_instance > options.threshold
 
     if group.max_size > numinstances and above_threshold:
-        autoscale.execute_policy('scale_up', options.group)
-        print "[%s] Scaled up to %d" % (group.name, numinstances + 1)
+        currinstances = numinstances
+        while (float(inqueue) / float(currinstances)) > options.threshold and currinstances < group.max_size:
+            autoscale.execute_policy('scale_up', options.group)
+            currinstances += 1
+        print "[%s %s] Scaled up to %d (%d in queue)" % (group.name, datetime.today().isoformat(' '), currinstances, inqueue) 
     else:
-        print "[%s] Just chillin' (%d in queue, %d instances)" % (group.name, inqueue, numinstances)
+        print "[%s %s] Just chillin' (%d in queue, %d instances)" % (group.name, datetime.today().isoformat(' '), inqueue, numinstances)
 
     sleep(60)
