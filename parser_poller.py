@@ -17,16 +17,11 @@ import sys
 SIG = str(os.getpid()) + '_' + str(int(time()))
 TEXT_DIR = '/tmp/text/'
 XML_DIR = '/tmp/xml/'
-SIG_DIR = '/tmp/text/'+SIG
-FILELIST_DIR = '/tmp/filelist/'
+PACKAGE_DIR = "/tmp/event_packages/"
 BUCKET_NAME = 'nlp-data'
-CORENLP_DIR = '/home/ubuntu/corenlp/'
 GROUP = 'parser_poller'
 REGION = 'us-west-2'
 DESIRED_CAPACITY = 4
-
-JARS = ['stanford-corenlp-3.2.0.jar', 'stanford-corenlp-3.2.0-models.jar', 
-        'xom.jar', 'joda-time.jar', 'jollyday.jar']
 
 conn = connect_s3()
 bucket = conn.get_bucket(BUCKET_NAME)
@@ -39,94 +34,81 @@ if len(groups) > 0:
     autoscale_group = groups[0]
 
 while True:
-    # start with fresh directories
-    for directory in [TEXT_DIR, XML_DIR, FILELIST_DIR]:
+    for directory in [TEXT_DIR, XML_DIR, PACKAGE_DIR]:
         if not os.path.exists(directory):
             os.mkdir(directory)
 
-    keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
+    inqueue = len(os.listdir(TEXT_DIR))
+    
+    if inqueue == 0:
+        print "[%s] Adding to text queue" % hostname
 
-    # shut this instance down if we have an empty queue and we're above desired capacity
-    if len(keys) == 0 and autoscale_group is not None:
-        instances = [i for i in autoscale_group.instances]
-        if DESIRED_CAPACITY < len(instances):
-            print "[%s] Scaling down, shutting down." % hostname
-            current_id = get_instance_metadata()['instance-id']
-            if len(filter(lambda x: x.instance_id == current_id, instances)) == 1:
-                autoscale.terminate_instance(current_id)
-            sys.exit()
+        keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
 
-    # iterating over keys in case we try to grab a key that another instance scoops
-    for key in keys:
-        old_key_name = key.key
-        print "[%s] found key %s" % (hostname, old_key_name)
-        # found a tar file, now try to capture it via move
-        try:
-            new_key_name = '/parser_processing/'+SIG+'.tgz'
-            key.copy(bucket, new_key_name)
-            key.delete()
+        # shut this instance down if we have an empty queue and we're above desired capacity
+        if len(keys) == 0 and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)) and autoscale_group is not None:
+            instances = [i for i in autoscale_group.instances]
+            if DESIRED_CAPACITY < len(instances):
+                print "[%s] Scaling down, shutting down." % hostname
+                current_id = get_instance_metadata()['instance-id']
+                if len(filter(lambda x: x.instance_id == current_id, instances)) == 1:
+                    autoscale.terminate_instance(current_id)
+                    sys.exit()
+
+        # iterating over keys in case we try to grab a key that another instance scoops
+        for key in keys:
+            old_key_name = key.key
+            print "[%s] found key %s" % (hostname, old_key_name)
+            # found a tar file, now try to capture it via move
+            try:
+                new_key_name = '/parser_processing/'+SIG+'.tgz'
+                key.copy(bucket, new_key_name)
+                key.delete()
             
-        except S3ResponseError:
-            # we probably hit our race condition -- not to worry!
-            # we'll just take the next key.
-            continue
+            except S3ResponseError:
+                # we probably hit our race condition -- not to worry!
+                # we'll just take the next key.
+                continue
 
-        # now that it's been moved, pull it down
-        newkey = Key(bucket)
-        newkey.key = new_key_name
-        newfname = SIG_DIR+'.tgz'
-        newkey.get_contents_to_filename(newfname)
+            # now that it's been moved, pull it down
+            newkey = Key(bucket)
+            newkey.key = new_key_name
+            newfname = PACKAGE_DIR+SIG+'.tgz'
+            newkey.get_contents_to_filename(newfname)
         
-        # untar that sucker
-        tar = tarfile.open(newfname)
-        tar.extractall(SIG_DIR)
+            # untar that sucker
+            print "[%s] Unpacking %s" % (hostname, newfname)
+            tar = tarfile.open(newfname)
+            tar.extractall("/tmp/txt")
+            tar.close()
+            os.remove(newfname)
+            inqueue = len(os.listdir(TEXT_DIR))
 
-        # write file list
-        filelistname = FILELIST_DIR+'/'+SIG
-        with open(filelistname, 'w') as filelist:
-            filelist.write("\n".join(SIG_DIR+'/'+f for f in os.listdir(SIG_DIR)))
-
-        # send it to corenlp
-        print "Running Parser"
-        parser = Popen(['java', 
-                        '-Xmx60G', #assuming 68G memory on m2.4xlarge, 8G for memory leaks, etc.
-                        '-cp', ':'.join([CORENLP_DIR+j for j in JARS]),
-                        'edu.stanford.nlp.pipeline.StanfordCoreNLP', 
-                        '-filelist',  filelistname, 
-                        '-outputDirectory', XML_DIR,
-                        '-threads', '8'])
-        parser.wait()
-                       
-        if parser.returncode != 0:
-            print "[%s] error parsing text for %s" % (hostname, old_key_name)
-            # back to queue
-            returnkey = Key(bucket)
-            returnkey.key = old_key_name
-            returnkey.set_contents_from_file(newfname)
+            # delete remnant data with extreme prejudice
             newkey.delete()
-            sys.exit()
 
-        print "[%s] successfully parsed text in %s" % (hostname, old_key_name)
-        # send xml to s3, keep track of data extraction events
-        data_events = []
-        for xmlfile in os.listdir(XML_DIR):
-            key = Key(bucket)
-            new_key = '/xml/%s/%s.xml' % tuple(xmlfile.replace('.xml', '').split('_'))
-            key.key = new_key
-            data_events += [new_key]
-            key.set_contents_from_filename(XML_DIR+'/'+xmlfile)
+            # at this point we want to get the list of keys all over again
+            break
 
-        # write events to a new file
-        event_key = Key(bucket)
-        event_key.key = '/data_events/'+SIG
-        event_key.set_contents_from_string("\n".join(data_events))
+    print "[%s] %d text files in queue..." % (hostname, inqueue)
 
-        # delete remnant data with extreme prejudice
-        newkey.delete()
-        shutil.rmtree(XML_DIR)
-        shutil.rmtree(TEXT_DIR)
-        shutil.rmtree(FILELIST_DIR)
+    data_events = []
+    xmlfiles = os.listdir(XML_DIR)
 
-        # at this point we want to get the list of keys all over again
-        break
+    for xmlfile in xmlfiles:
+        key = Key(bucket)
+        new_key = '/xml/%s/%s.xml' % tuple(xmlfile.replace('.xml', '').split('_'))
+        key.key = new_key
+        data_events += [new_key]
+        xmlfilename = XML_DIR+xmlfile
+        key.set_contents_from_filename(xmlfilename)
+        os.remove(xmlfilename)
+
+    print "[%s] Uploaded %d files (rate of %.2f docs/sec)" % (hostname, len(xmlfiles), float(len(xmlfiles))/30.0)
+        
+    # write events to a new file
+    event_key = Key(bucket)
+    event_key.key = '/data_events/'+SIG
+    event_key.set_contents_from_string("\n".join(data_events))
+
     sleep(30) # don't want to bug the crap outta amazon
