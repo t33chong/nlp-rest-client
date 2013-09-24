@@ -14,6 +14,8 @@ import os
 import shutil
 import sys
 
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+
 SIG = str(os.getpid()) + '_' + str(int(time()))
 TEXT_DIR = '/tmp/text/'
 XML_DIR = '/tmp/xml/'
