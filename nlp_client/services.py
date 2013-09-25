@@ -7,6 +7,7 @@ from caching import cachedServiceRequest
 from mrg_utils import Sentence as MrgSentence
 from boto import connect_s3
 from boto.s3.key import Key
+import socket
 import time
 import title_confirmation
 import cql
@@ -73,14 +74,21 @@ class ParsedXmlService(RestfulResource):
         ''' Returns a response with the XML of the parsed text
         :param doc_id: the id of the document in Solr
         '''
-        bucket = get_s3_bucket()
-        key = Key(bucket)
-        key.key = '%s/%s.xml' % tuple(doc_id.split('_'))
-        if key.exists():
-            response = {'status': 200, doc_id:key.get_contents_as_string()}
-        else:
-            response = {'status': 500, 'message': 'Key does not exist'}
-        return response
+        try:
+            bucket = get_s3_bucket()
+            key = Key(bucket)
+            key.key = 'xml/%s/%s.xml' % tuple(doc_id.split('_'))
+
+            if key.exists():
+                response = {'status': 200, doc_id:key.get_contents_as_string()}
+            else:
+                response = {'status': 500, 'message': 'Key does not exist'}
+            return response
+        except socket.error:
+            # probably need to refresh our connection
+            global S3_BUCKET
+            S3_BUCKET = None
+            return self.get_from_s3(doc_id)
 
 
     def get_from_file(self, doc_id):
