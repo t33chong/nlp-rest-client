@@ -81,7 +81,7 @@ while True:
             # untar that sucker
             print "[%s] Unpacking %s" % (hostname, newfname)
             tar = tarfile.open(newfname)
-            tar.extractall("/tmp/txt")
+            tar.extractall(TEXT_DIR)
             tar.close()
             os.remove(newfname)
             inqueue = len(os.listdir(TEXT_DIR))
