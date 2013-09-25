@@ -42,7 +42,7 @@ while True:
 
     inqueue = len(os.listdir(TEXT_DIR))
     
-    if inqueue == 0:
+    if inqueue < 10:
         print "[%s] Adding to text queue" % hostname
 
         keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
