@@ -11,11 +11,11 @@ We need this script for two reasons:
 2) You can't create metric alarms for EC2 instances hosted outside of us-east-1
 """
 
-GROUP_NAME = 'parser_poller'
+GROUP_NAME = 'parser'
 THRESHOLD = 10
 
 QUEUES = {
-    'parser_poller': 'text_events',
+    'parser': 'text_events',
     'data_poller': 'data_events'
 }
 

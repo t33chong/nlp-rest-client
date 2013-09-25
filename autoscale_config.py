@@ -5,10 +5,10 @@ from boto.ec2.autoscale import ScalingPolicy
 
 from optparse import OptionParser
 
-AMI = 'ami-bc40df8c'
-GROUP_NAME = 'parser_poller'
+AMI = 'ami-e632add6'
+GROUP_NAME = 'parser'
 DEFAULT_MIN = 4
-DEFAULT_MAX = 25
+DEFAULT_MAX = 20
 
 parser = OptionParser()
 parser.add_option('-m', '--max', dest='max', default=None,
