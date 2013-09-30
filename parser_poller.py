@@ -8,7 +8,7 @@ from boto.exception import S3ResponseError
 from boto.utils import get_instance_metadata
 from time import time, sleep
 from socket import gethostname
-from subprocess import Popen
+from subprocess import Popen, call
 import tarfile
 import os
 import shutil
@@ -31,6 +31,49 @@ hostname = gethostname()
 autoscale = connect_autoscale_to(REGION)
 autoscale_group = None
 groups = autoscale.get_all_groups(names=[GROUP])
+stalling_increments = 0
+
+def add_files():
+    global hostname, bucket, PACKAGE_DIR, SIG, inqueue, autoscale_group
+    print "[%s] Adding to text queue" % hostname
+
+    keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
+
+    # iterating over keys in case we try to grab a key that another instance scoops
+    for key in keys:
+        old_key_name = key.key
+        print "[%s] found key %s" % (hostname, old_key_name)
+        # found a tar file, now try to capture it via move
+        try:
+            new_key_name = '/parser_processing/'+SIG+'.tgz'
+            key.copy(bucket, new_key_name)
+            key.delete()
+            
+        except S3ResponseError:
+            # we probably hit our race condition -- not to worry!
+            # we'll just take the next key.
+            continue
+
+        # now that it's been moved, pull it down
+        newkey = Key(bucket)
+        newkey.key = new_key_name
+        newfname = PACKAGE_DIR+SIG+'.tgz'
+        newkey.get_contents_to_filename(newfname)
+        
+        # untar that sucker
+        print "[%s] Unpacking %s" % (hostname, newfname)
+        tar = tarfile.open(newfname)
+        tar.extractall(TEXT_DIR)
+        tar.close()
+        os.remove(newfname)
+        inqueue = len(os.listdir(TEXT_DIR))
+
+        # delete remnant data with extreme prejudice
+        newkey.delete()
+
+        # at this point we want to get the list of keys all over again
+        return True
+    return False
 
 if len(groups) > 0:
     autoscale_group = groups[0]
@@ -43,12 +86,9 @@ while True:
     inqueue = len(os.listdir(TEXT_DIR))
     
     if inqueue < 10:
-        print "[%s] Adding to text queue" % hostname
-
-        keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
-
+        added = add_files()
         # shut this instance down if we have an empty queue and we're above desired capacity
-        if len(keys) == 0 and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)) and autoscale_group is not None:
+        if not added and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)) and autoscale_group is not None:
             instances = [i for i in autoscale_group.instances]
             if DESIRED_CAPACITY < len(instances):
                 print "[%s] Scaling down, shutting down." % hostname
@@ -57,45 +97,23 @@ while True:
                     autoscale.terminate_instance(current_id)
                     sys.exit()
 
-        # iterating over keys in case we try to grab a key that another instance scoops
-        for key in keys:
-            old_key_name = key.key
-            print "[%s] found key %s" % (hostname, old_key_name)
-            # found a tar file, now try to capture it via move
-            try:
-                new_key_name = '/parser_processing/'+SIG+'.tgz'
-                key.copy(bucket, new_key_name)
-                key.delete()
-            
-            except S3ResponseError:
-                # we probably hit our race condition -- not to worry!
-                # we'll just take the next key.
-                continue
-
-            # now that it's been moved, pull it down
-            newkey = Key(bucket)
-            newkey.key = new_key_name
-            newfname = PACKAGE_DIR+SIG+'.tgz'
-            newkey.get_contents_to_filename(newfname)
-        
-            # untar that sucker
-            print "[%s] Unpacking %s" % (hostname, newfname)
-            tar = tarfile.open(newfname)
-            tar.extractall(TEXT_DIR)
-            tar.close()
-            os.remove(newfname)
-            inqueue = len(os.listdir(TEXT_DIR))
-
-            # delete remnant data with extreme prejudice
-            newkey.delete()
-
-            # at this point we want to get the list of keys all over again
-            break
-
     print "[%s] %d text files in queue..." % (hostname, inqueue)
 
     data_events = []
     xmlfiles = os.listdir(XML_DIR)
+
+    if len(xmlfiles) == 0:
+        stalling_increments += 1
+    else:
+        stalling_increments = 0
+
+    if stalling_increments == 5:
+        stalling_increments = 0
+        print "Restarting daemon and adding more files since it's being a slow douche."
+        call("sv stop parser_daemon", shell=True)
+        call("killall java", shell=True)
+        call("sv start parser_daemon", shell=True)
+        print "Done with that. Now get to work!"
 
     for xmlfile in xmlfiles:
         key = Key(bucket)
