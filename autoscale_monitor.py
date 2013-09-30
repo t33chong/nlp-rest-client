@@ -17,7 +17,7 @@ THRESHOLD = 10
 
 QUEUES = {
     'parser': 'text_events',
-    'data_poller': 'data_events'
+    'data_extraction': 'data_events'
 }
 
 parser = OptionParser()
