@@ -1,4 +1,5 @@
-import cql
+from boto import connect_s3
+from boto.s3.key import Key
 import json
 import time
 
@@ -7,21 +8,22 @@ Caching library -- basically memoizes stuff for now
 '''
 
 '''
-If this value gets initialized then we will start memoizing things with Cassandra
+If this value gets initialized then we will start memoizing things with S3
 '''
-CACHE_DB = None
+CACHE_BUCKET = None
 
 WRITE_ONLY = False
 READ_ONLY = False
 
-def db(new_db = None):
+def bucket(new_bucket = None):
     ''' Access & mutate so we don't have globals in every function
-    :param new_db:cql connection
+    :param new_bucket:s3 bucket
+    :return
     '''
-    global CACHE_DB
-    if new_db:
-        CACHE_DB = new_db
-    return CACHE_DB
+    global CACHE_BUCKET
+    if new_bucket:
+        CACHE_BUCKET = new_bucket
+    return CACHE_BUCKET
 
 
 def read_only(mutate = None):
@@ -36,7 +38,7 @@ def read_only(mutate = None):
 
 def write_only(mutate = None):
     ''' Access & mutate so we don't need globals in every function
-    :paramm mutate: a boolean value
+    :param mutate: a boolean value
     '''
     global WRITE_ONLY
     if mutate is not None:
@@ -44,12 +46,12 @@ def write_only(mutate = None):
     return WRITE_ONLY
 
 
-def useCaching(host='dev-indexer-s1', port=9160, keyspace='nlp', writeOnly = False, readOnly = False):
-    ''' Invoke this to set CACHE_DB and enable caching on these services 
+def useCaching(writeOnly = False, readOnly = False):
+    ''' Invoke this to set CACHE_BUCKET and enable caching on these services 
     :param write_only: whether we should avoid reading from the cache
     :param read_only: whether we should avoid writing to the cache
     '''
-    db(new_db=cql.connection.connect(host, port, keyspace))
+    bucket(connect_s3().get_bucket('nlp-data'))
     read_only(readOnly)
     write_only(writeOnly)
 
@@ -57,50 +59,32 @@ def useCaching(host='dev-indexer-s1', port=9160, keyspace='nlp', writeOnly = Fal
 def purgeCacheForDoc(doc_id):
     ''' Remove all service responses for a given doc id
     :param doc_id: the document id. if it's a wiki id, you're basically removing all wiki-scoped caching
+    :return: a MultiDeleteResult
     '''
-    cursor = db().cursor()
-    result = cursor.execute("SELECT signature FROM service_responses WHERE doc_id = :doc_id", params={'doc_id':doc_id})
+    b = bucket()
+    prefix = 'service_responses/%s' % doc_id.replace('_', '/')
+    return b.delete_keys([key for key in b.get_all_keys(prefix=prefix)])
+    
 
-    return purgeCacheForSignatures([result[0] for result in cursor])
-
-
-def purgeCacheForService(service_and_method):
-    ''' Remove cached service responses for a given service
-    :param service_and_method: the ServiceName.method
-    '''
-    cursor = db().cursor()
-    cursor.execute("SELECT signature FROM service_responses WHERE service = :service", params={'service':service_and_method})
-    return purgeCacheForSignatures([result[0] for result in cursor])
+# Deprecated for now -- not something s3 supports (prefixes, not suffixes)
+#
+#def purgeCacheForService(service_and_method):
+#    ''' Remove cached service responses for a given service
+#    :param service_and_method: the ServiceName.method
+#    '''
+#    cursor = db().cursor()
+#    cursor.execute("SELECT signature FROM service_responses WHERE service = :service", params={'service':service_and_method})
+#    return purgeCacheForSignatures([result[0] for result in cursor])
 
 
 def purgeCacheForWiki(wiki_id):
     ''' Remove cached service responses for a given wiki id
     :param wiki_id: the id of the wiki
+    :return: a MultiDeleteResult
     '''
-    cursor = db().cursor()
-    cursor.execute("SELECT signature FROM service_responses WHERE wiki_id = :wiki_id", params={'wiki_id':wiki_id})
-        
-    return purgeCacheForSignatures([result[0] for result in cursor])
-
-
-def purgeCacheForSignatures(signatures):
-    ''' Bulk delete for multiple signatures
-    :param signatures: list of signatures
-    '''
-    prepared = []
-    counter = 1
-    params = {}
-
-    for signature in signatures:
-        currkey = "signature"+str(counter)
-        prepared += [':'+currkey]
-        params[currkey] = signature
-        counter += 1
-        if counter % 20 == 0:
-            cursor.execute("DELETE FROM service_responses WHERE signature IN (%s)" % (", ".join(prepared)), params=params)
-            prepared, params = [], {}
-
-    return True
+    b = bucket()
+    prefix = 'service_responses/%s' % wiki_id
+    return b.delete_keys([key for key in b.get_all_keys(prefix=prefix)])
 
 
 def cachedServiceRequest(getMethod):
@@ -109,8 +93,8 @@ def cachedServiceRequest(getMethod):
     '''
     def invoke(self, *args, **kw):
 
-        connection = db()
-        if connection is None:
+        b = bucket()
+        if b is None:
             response = getMethod(self, *args, **kw)
 
         else:
@@ -119,36 +103,20 @@ def cachedServiceRequest(getMethod):
                 doc_id = args[0]
             wiki_id = int(doc_id.split('_')[0])
             service = str(self.__class__.__name__)+'.'+getMethod.func_name
+            path = 'service_responses/%s/%s' % (doc_id.replace('_', '/'), service)
             
-            data = {'doc_id':doc_id, 'service':service, 'wiki_id':wiki_id}
-            signature = json.dumps(data)
-
-            cursor = connection.cursor()
-
             result = None
             if not write_only():
-                query = """
-                      SELECT response
-                      FROM service_responses
-                      WHERE signature = :signature
-                """
-                if cursor.execute(query, params={'signature':signature}):
-                    result = cursor.fetchone()
+                result = b.get_key(path)
 
-            if len(result) < 1 or result[0] is None:
+            if result is None:
                 response = getMethod(self, *args, **kw)
                 if response['status'] == 200 and not read_only():
-                    insert = """
-                           INSERT INTO service_responses (signature, doc_id, service, wiki_id, response, last_updated)
-                           VALUES (:signature, :doc_id, :service, :wiki_id, :response, :last_updated)
-                    """
-                    data['signature'] = signature
-                    data['response'] = json.dumps(response)
-                    data['last_updated'] = int(time.time())
-                    cursor.execute(insert, params=data)
+                    key = b.new_key(key_name=path)
+                    key.set_contents_from_string(json.dumps(response))
 
             else:
-                response = json.loads(result[0])
+                response = json.loads(result.get_contents_as_string())
 
         return response
     return invoke
