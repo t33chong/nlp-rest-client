@@ -2,7 +2,7 @@ from flask.ext import restful
 from text.blob import TextBlob
 from os import path, listdir
 from gzip import open as gzopen
-from caching import cachedServiceRequest
+from caching import cachedServiceRequest, writeOnly
 from mrg_utils import Sentence as MrgSentence
 from boto import connect_s3
 from boto.s3.key import Key

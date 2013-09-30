@@ -1,13 +1,15 @@
 from flask import Flask, request
 from wikicities.DB import LoadBalancer
+from boto import connect_s3
 from optparse import OptionParser
+import zlib
 import phpserialize
 import re
 import json
 import time
 
 """ Memoization variables """
-TITLES, REDIRECTS, CURRENT_WIKI_ID = [], {}, None
+TITLES, REDIRECTS, CURRENT_WIKI_ID, USE_S3 = [], {}, None, True
 
 
 yml = '/usr/wikia/conf/current/DB.yml'
@@ -103,25 +105,39 @@ def is_title_legit():
     return json.dumps(resp)
 
 def get_titles_for_wiki_id(wiki_id):
-    global TITLES, CURRENT_WIKI_ID
+    global TITLES, CURRENT_WIKI_ID, USE_S3
     if wiki_id == CURRENT_WIKI_ID and len(TITLES) > 0:
         return TITLES
-    local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
-    CURRENT_WIKI_ID = wiki_id
-    cursor = local_db.cursor()
-    cursor.execute("SELECT page_title FROM page WHERE page_namespace IN (%s)" % ", ".join(map(str, get_namespaces(get_global_db(), wiki_id))))
-    TITLES = set(map(lambda x: preprocess(x[0]), cursor))
+
+    if USE_S3:
+        bucket = connect_s3().get_bucket('nlp-data')
+        key = bucket.get_key('article_titles/%s.gz' % str(wiki_id))
+        TITLES = json.loads(zlip.decompress(key.get_contents_as_string()))[wiki_id]
+    else:
+        local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
+        CURRENT_WIKI_ID = wiki_id
+        cursor = local_db.cursor()
+        cursor.execute("SELECT page_title FROM page WHERE page_namespace IN (%s)" % ", ".join(map(str, get_namespaces(get_global_db(), wiki_id))))
+        TITLES = set(map(lambda x: preprocess(x[0]), cursor))
+
     CURRENT_WIKI_ID = wiki_id
     return TITLES
 
 def get_redirects_for_wiki_id(wiki_id):
-    global REDIRECTS, CURRENT_WIKI_ID
+    global REDIRECTS, CURRENT_WIKI_ID, USE_S3
     if wiki_id == CURRENT_WIKI_ID and len(REDIRECTS) > 0:
         return REDIRECTS
-    local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
-    cursor = local_db.cursor()
-    cursor.execute("SELECT page_title, rd_title FROM redirect INNER JOIN page ON page_id = rd_from")
-    REDIRECTS = dict([map(preprocess, row) for row in cursor])
+
+    if USE_S3:
+        bucket = connect_s3().get_bucket('nlp-data')
+        key = bucket.get_key('article_redirects/%s.gz' % str(wiki_id))
+        REDIRECTS = json.loads(zlip.decompress(key.get_contents_as_string()))[wiki_id]
+    else:
+        local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
+        cursor = local_db.cursor()
+        cursor.execute("SELECT page_title, rd_title FROM redirect INNER JOIN page ON page_id = rd_from")
+        REDIRECTS = dict([map(preprocess, row) for row in cursor])
+
     CURRENT_WIKI_ID = wiki_id
     return REDIRECTS
 
