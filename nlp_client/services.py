@@ -221,6 +221,7 @@ class AllVerbPhrasesService(RestfulResource):
         '''
         return {doc_id:PhraseService.get(doc_id, u'VP'), 'status':200}
 
+
 class HeadsService(RestfulResource):
 
     ''' Provides syntactic heads for a given document '''
@@ -263,6 +264,7 @@ class HeadsCountService(RestfulResource):
         singleHeads = set(allHeads)
         return {'status':200, wiki_id: dict(zip(singleHeads, map(allHeads.count, singleHeads))) }
 
+
 class TopHeadsService(RestfulResource):
 
     ''' Gets the most frequent syntactic in a wiki '''
@@ -274,6 +276,7 @@ class TopHeadsService(RestfulResource):
                            reverse=True)
 
         return {'status': 200, wiki_id: items}
+
 
 class SolrPageService(RestfulResource):
 
@@ -473,6 +476,47 @@ class WikiEntitiesService(RestfulResource):
             counts_to_entities[cnt] = counts_to_entities.get(cnt, []) + [entity]
 
         return {wiki_id:counts_to_entities, 'status':200}
+
+
+
+class EntityDocumentCountsService(RestfulResource):
+    
+    ''' Counts the number of documents each entity appears in '''
+    ''' Aggregates entities over a wiki '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+
+        ''' Given a wiki doc id, iterates over all documents available.
+        For each noun phrase, we confirm whether there is a matching title.
+        We then cross-reference that noun phrase by document count, not mention count
+        :param wiki_id: the id of the wiki
+        '''
+
+        wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
+        if not wiki:
+            return {'status':400, 'message':'Not Found'}
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entities_to_count = {}
+        entity_service = EntityCountsService()
+
+        counter = 1
+        page_doc_ids = page_doc_response.get(wiki_id, [])
+        total = len(page_doc_ids)
+        for page_doc_id in page_doc_ids:
+            entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
+            map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + 1) , entities_with_count)
+            counter += 1
+
+        counts_to_entities = {}
+        for entity in entities_to_count.keys():
+            cnt = entities_to_count[entity]
+            counts_to_entities[cnt] = counts_to_entities.get(cnt, []) + [entity]
+
+        return {wiki_id:counts_to_entities, 'status':200}
             
 
 
@@ -481,8 +525,9 @@ class ListDocIdsService(RestfulResource):
     ''' Service to expose resources in WikiDocumentIterator '''
     def get(self, wiki_id, start=0, limit=None):
 
-        xmlPath = '%s/%s/' % (XML_PATH, wiki_id)
-        if not path.exists(xmlPath):
+        bucket = get_s3_bucket()
+        keys = bucket.get_all_keys(prefix='xml/%s' % (str(wiki_id)), max_keys=1)
+        if len(keys) == 0:
             return {'status':500, 'message':'Wiki not yet processed'}
 
         if limit:
