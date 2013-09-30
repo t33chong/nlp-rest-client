@@ -953,6 +953,15 @@ public class ParserDaemon extends StanfordCoreNLP{
 		    //
 		    // construct the pipeline
 		    //
+		    File failedDir = new File("/tmp/failed_text/");
+		    if (!failedDir.exists()) {
+		    	failedDir.mkdir();
+		    }
+		    
+		    File processingDir = new File("/tmp/processing_text/");
+		    if (!processingDir.exists()) {
+		    	processingDir.mkdir();
+		    }
 		    
 		    Collection<String> registered = new ArrayList<String>();
 		    ExecutorService exec = Executors.newFixedThreadPool(numThreads);
@@ -962,7 +971,7 @@ public class ParserDaemon extends StanfordCoreNLP{
 		    	Collection<File> filesInDir = Arrays.asList(new File("/tmp/text").listFiles());
 		    	Collection<File> filesToParse = new ArrayList<File>();
 		    	for (File fl: filesInDir) {
-		    		String name = fl.getName();
+		    		String name = fl.getAbsolutePath();
 		    		if (!registered.contains(name)) {
 		    			registered.add(name);
 		    			filesToParse.add(fl);
@@ -973,6 +982,19 @@ public class ParserDaemon extends StanfordCoreNLP{
 		    	if (count > 0) {
 		    		pipeline.processFiles(filesToParse, exec, metaInfoLock);
 		    	}
+		    	// prevent runaway memory usage
+		    	Collection<String> truncatedRegistered = new ArrayList<String>(); 
+		    	for (String fname: registered) {
+		    		File maybeFile = new File(fname);
+		    		File processingFile = new File(fname.replace("/tmp/text/", "/tmp/processing_text/"));
+		    		if (maybeFile.exists() || processingFile.exists()) {
+		    			// still need this to prevent re-threading, 
+		    			// probs will go away next iteration
+		    			truncatedRegistered.add(fname);
+		    			truncatedRegistered.add(processingFile.getName());
+		    		}
+		    	}
+		    	registered = truncatedRegistered;
 		    }
 	  }
 	  
@@ -1022,12 +1044,14 @@ public class ParserDaemon extends StanfordCoreNLP{
                     return;
                   }
 
+                  File processFile = new File("/tmp/processing_text/"+file.getName());
+                  file.renameTo(processFile);
                   //--Process File
                   Annotation annotation = null;
                   //(read file)
                   if (annotation == null) {
                 	  String encoding = getEncoding();
-                	  String text = IOUtils.slurpFile(file, encoding);
+                	  String text = IOUtils.slurpFile(processFile, encoding);
                 	  annotation = new Annotation(text);
                   }
 
@@ -1035,7 +1059,7 @@ public class ParserDaemon extends StanfordCoreNLP{
 
                   
                   String fname = file.getName();
-                  forceTrack("Processing file " + file.getAbsolutePath() + " ... writing to /tmp/xml/"+fname+".xml");
+                  forceTrack("Processing file " + processFile.getAbsolutePath() + " ... writing to /tmp/xml/"+fname+".xml");
                 
                   FileOutputStream fos = new FileOutputStream(outputFilename);
                   OutputStream bfos = new BufferedOutputStream(fos);
@@ -1043,8 +1067,9 @@ public class ParserDaemon extends StanfordCoreNLP{
                   fos.close();
                   bfos.close();
                   file.delete();
+                  processFile.delete();
 
-                  endTrack("Processing file " + file.getAbsolutePath() + " ... writing to /tmp/xml/"+fname+".xml");
+                  endTrack("Processing file " + processFile.getAbsolutePath() + " ... writing to /tmp/xml/"+fname+".xml");
               } catch (IOException e) {
                 throw new RuntimeIOException(e);
               }
@@ -1055,18 +1080,25 @@ public class ParserDaemon extends StanfordCoreNLP{
 	          public void run(){
 	            try{
 	              //(signal start of threads)
-	              metaInfoLock.lock();
-	              metaInfoLock.unlock();
+	              //metaInfoLock.lock();
+	              //metaInfoLock.unlock();
 	              //(run runnable)
 	              try{
 	                runme.run();
 	              } catch (Exception e){
+	            	  String failedfname = "/tmp/failed_txt/"+file.getName();
+	            	  System.out.println(file.getName()+" failed parsing, moving to "+failedfname);
+	            	  file.renameTo(new File(failedfname));
+	            	  e.printStackTrace();
+	              }
+            	  /**
 	                e.printStackTrace();
 	                System.exit(1);
 	              } catch (AssertionError e) {
 	                e.printStackTrace();
 	                System.exit(1);
 	              }
+	              **/
 	              //(signal end of thread)
 	              Redwood.Util.finishThread();
 	              //(signal end of threads)
@@ -1074,6 +1106,7 @@ public class ParserDaemon extends StanfordCoreNLP{
 	              t.printStackTrace();
 	              System.exit(1);
 	            }
+	            
 	          }
 	        });
           
