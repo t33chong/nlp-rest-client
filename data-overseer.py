@@ -12,11 +12,8 @@ from boto.s3.key import Key
 workers = int(sys.argv[1])
 
 SERVICES = 'services-config.json'
-CREDENTIALS = 'aws.json'
 
-key = json.loads(open(CREDENTIALS).read())['key']
-secret = json.loads(open(CREDENTIALS).read())['secret']
-bucket = S3Connection(key, secret).get_bucket('nlp-data')
+bucket = S3Connection().get_bucket('nlp-data')
 k = Key(bucket)
 
 eventfiles = [eventfile.name for eventfile in bucket.get_all_keys(prefix='data_events/')]
