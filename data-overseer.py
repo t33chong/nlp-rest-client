@@ -2,21 +2,37 @@
 Responsible for handling the event stream - iterates over files in the data_events S3 bucket and calls a set of services on each pageid/XML file listed in order to warm the cache.
 """
 
-import json
-from optparse import OptionParser
 import sys
-from WikiaSolr.overseer import DataOverseer
+import json
+from time import sleep
+from subprocess import Popen
+from boto.s3.connection import S3Connection
+from boto.s3.key import Key
 
-parser = OptionParser()
-parser.add_option("-v", "--verbose", dest="verbose", action="store", default=True,
-                  help="Shows verbose output")
-parser.add_option("-n", "--workers", dest="workers", action="store", default=4,
-                  help="Specifies the number of open worker processes")
-parser.add_option("-s", "--services", dest="services", action="store", default='services-config.json',
-                  help="Points to a JSON file containing the names of services to call")
-parser.add_option("-c", "--credentials", dest="credentials", action="store", default='aws.json',
-                  help="Points to a JSON file containing AWS credentials")
+workers = int(sys.argv[1])
 
-(options, args) = parser.parse_args()
+SERVICES = 'services-config.json'
+CREDENTIALS = 'aws.json'
 
-DataOverseer(vars(options)).oversee()
+key = json.loads(open(CREDENTIALS).read())['key']
+secret = json.loads(open(CREDENTIALS).read())['secret']
+bucket = S3Connection(key, secret).get_bucket('nlp-data')
+k = Key(bucket)
+
+eventfiles = [eventfile.name for eventfile in bucket.get_all_keys(prefix='data_events/')]
+
+processes = []
+
+for i in range(0, len(eventfiles), workers):
+    print 'i', i
+    current = eventfiles[i:i+workers]
+    print 'working on:', current
+    processes = map(lambda x: Popen('python data-harvester.py %s' % x, shell=True), current)
+    while len(processes) > 0:
+        print 'processes:', processes
+        processes = filter(lambda x: x.poll() is None, processes)
+        sleep(5)
+    ## delete all event files in current batch when complete - uncomment
+    #for eventfile in current:
+    #    k.key = eventfile
+    #    k.delete()

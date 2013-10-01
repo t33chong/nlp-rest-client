@@ -29,10 +29,14 @@ k = Key(bucket)
 k.key = eventfile
 
 for filename in k.get_contents_as_string().split('\n'):
-    match = re.search('([0-9]+)/([0-9]+)', filename)
-    doc_id = '%s_%s' % (match.group(1), match.group(2))
-    print '='*15 + doc_id + '='*15
-    for service in services:
-        print service
-        # dynamically call the specified service
-        print getattr(sys.modules[__name__], service)().get(doc_id)
+    try:
+        match = re.search('([0-9]+)/([0-9]+)', filename)
+        doc_id = '%s_%s' % (match.group(1), match.group(2))
+        print '='*15 + doc_id + '='*15
+        for service in services:
+            #print service
+            # dynamically call the specified service
+            call = getattr(sys.modules[__name__], service)().get(doc_id)
+            #print call
+    except AttributeError:
+        print '%s: line "%s" is an unexpected format.' % (eventfile, filename)
