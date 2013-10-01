@@ -2,7 +2,8 @@ from flask import Flask, request
 from wikicities.DB import LoadBalancer
 from boto import connect_s3
 from optparse import OptionParser
-import zlib
+from gzip import GzipFile
+from StringIO import StringIO
 import phpserialize
 import re
 import json
@@ -112,7 +113,11 @@ def get_titles_for_wiki_id(wiki_id):
     if USE_S3:
         bucket = connect_s3().get_bucket('nlp-data')
         key = bucket.get_key('article_titles/%s.gz' % str(wiki_id))
-        TITLES = json.loads(zlib.decompress(key.get_contents_as_string()))[wiki_id]
+        io = StringIO()
+        key.get_file(io)
+        io.seek(0)
+        stringdata = GzipFile(fileobj=io, mode='r').read()
+        TITLES = json.loads(stringdata)[wiki_id]
     else:
         local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
         CURRENT_WIKI_ID = wiki_id
@@ -131,7 +136,11 @@ def get_redirects_for_wiki_id(wiki_id):
     if USE_S3:
         bucket = connect_s3().get_bucket('nlp-data')
         key = bucket.get_key('article_redirects/%s.gz' % str(wiki_id))
-        REDIRECTS = json.loads(zlib.decompress(key.get_contents_as_string()))[wiki_id]
+        io = StringIO()
+        key.get_file(io)
+        io.seek(0)
+        stringdata = GzipFile(fileobj=io, mode='r').read()
+        REDIRECTS = json.loads(stringdata)[wiki_id]
     else:
         local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
         cursor = local_db.cursor()
