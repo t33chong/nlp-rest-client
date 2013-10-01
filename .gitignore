@@ -1,6 +1,5 @@
 *~
 *.pyc
 aws.json
-services-config.json
 *.swp
 WikiaSolr/*

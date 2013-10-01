@@ -1,11 +1,10 @@
 {
     "services": [
-        "ParsedJsonService",
         "CoreferenceCountsService",
         "AllNounPhrasesService",
         "AllVerbPhrasesService",
         "HeadsService",
-        "SolrPageService",
-        "SentimentService"
+        "SentimentService",
+        "EntityCountsService"
                 ]
 }
