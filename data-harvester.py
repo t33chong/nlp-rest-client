@@ -13,15 +13,10 @@ from nlp_client.caching import useCaching
 
 eventfile = sys.argv[1]
 services = sys.argv[2] if len(sys.argv) > 2 else 'services-config.json'
-credentials = sys.argv[3] if len(sys.argv) > 3 else 'aws.json'
 
 useCaching(writeOnly=True)
 
-credentials = json.loads(open(credentials).read())
-key = credentials.get('key')
-secret = credentials.get('secret')
-conn = S3Connection(key, secret)
-bucket = conn.get_bucket('nlp-data')
+bucket = S3Connection().get_bucket('nlp-data')
 
 services = json.loads(open(services).read())['services']
 
@@ -32,11 +27,14 @@ for filename in k.get_contents_as_string().split('\n'):
     try:
         match = re.search('([0-9]+)/([0-9]+)', filename)
         doc_id = '%s_%s' % (match.group(1), match.group(2))
-        print '='*15 + doc_id + '='*15
+        print 'Calling services on', eventfile, doc_id
         for service in services:
             #print service
             # dynamically call the specified service
-            call = getattr(sys.modules[__name__], service)().get(doc_id)
-            #print call
+            try:
+                call = getattr(sys.modules[__name__], service)().get(doc_id)
+                #print call
+            except:
+                print '%s: Could not call %s on %s!' % (eventfile, service, doc_id)
     except AttributeError:
         print '%s: line "%s" is an unexpected format.' % (eventfile, filename)
