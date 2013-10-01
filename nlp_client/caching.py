@@ -63,7 +63,7 @@ def purgeCacheForDoc(doc_id):
     '''
     b = bucket()
     prefix = 'service_responses/%s' % doc_id.replace('_', '/')
-    return b.delete_keys([key for key in b.get_all_keys(prefix=prefix)])
+    return b.delete_keys([key for key in b.list(prefix=prefix)])
     
 
 # Deprecated for now -- not something s3 supports (prefixes, not suffixes)
@@ -84,7 +84,7 @@ def purgeCacheForWiki(wiki_id):
     '''
     b = bucket()
     prefix = 'service_responses/%s' % wiki_id
-    return b.delete_keys([key for key in b.get_all_keys(prefix=prefix)])
+    return b.delete_keys([key for key in b.list(prefix=prefix)])
 
 
 def cachedServiceRequest(getMethod):

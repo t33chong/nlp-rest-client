@@ -526,7 +526,7 @@ class ListDocIdsService(RestfulResource):
     def get(self, wiki_id, start=0, limit=None):
 
         bucket = get_s3_bucket()
-        keys = bucket.get_all_keys(prefix='xml/%s' % (str(wiki_id)), max_keys=1)
+        keys = bucket.list(prefix='xml/%s' % (str(wiki_id)), max_keys=1)
         if len(keys) == 0:
             return {'status':500, 'message':'Wiki not yet processed'}
 
@@ -552,7 +552,7 @@ class ArticleDocIdIterator:
         def id_from_key(x):
             split = x.split('/')
             return "%s_%s" % (split[-2], split[-1].replace('.xml', ''))
-        self.keys = [id_from_key(key.key) for key in bucket.get_all_keys(prefix='xml/'+str(wid)) if key.key.endswith('.xml')]
+        self.keys = [id_from_key(key.key) for key in bucket.list(prefix='xml/'+str(wid)) if key.key.endswith('.xml')]
 
     def __iter__(self):
         ''' Iterator method '''
