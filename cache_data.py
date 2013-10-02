@@ -40,11 +40,10 @@ def call_services(eventfile):
                         call = getattr(sys.modules[__name__], service)().get(doc_id)
                     except:
                         print '%s: Could not call %s on %s!' % (eventfile, service, doc_id)
-                        raise #DEBUG
             except AttributeError:
                 print '%s: line "%s" is an unexpected format.' % (eventfile, filename)
         print 'EVENT FILE %s COMPLETE' % eventfile
-        #k.delete()
+        k.delete()
     except S3ResponseError:
         print 'EVENT FILE %s NOT FOUND!' % eventfile
 
