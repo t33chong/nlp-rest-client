@@ -23,9 +23,9 @@ def call_harvester(eventfile):
     harvester = Popen('python data-harvester.py %s' % eventfile, shell=True)
     harvester.wait()
     print 'EVENT FILE %s COMPLETE' % eventfile
-    #k = Key(bucket)
-    #k.key = eventfile
-    #k.delete()
+    k = Key(bucket)
+    k.key = eventfile
+    k.delete()
 
 pool = Pool(processes=workers)
 pool.map(call_harvester, eventfiles)
