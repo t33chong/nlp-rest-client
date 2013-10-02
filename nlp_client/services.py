@@ -248,10 +248,6 @@ class HeadsCountService(RestfulResource):
 
     @cachedServiceRequest
     def get(self, wiki_id):
-        wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
-        if not wiki:
-            return {'status':400, 'message':'Not Found'}
-
         page_doc_response = ListDocIdsService().get(wiki_id)
         if page_doc_response['status'] != 200:
             return page_doc_response
@@ -448,10 +444,6 @@ class WikiEntitiesService(RestfulResource):
         :param wiki_id: the id of the wiki
         '''
 
-        wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
-        if not wiki:
-            return {'status':400, 'message':'Not Found'}
-
         page_doc_response = ListDocIdsService().get(wiki_id)
         if page_doc_response['status'] != 200:
             return page_doc_response
@@ -490,10 +482,6 @@ class EntityDocumentCountsService(RestfulResource):
         :param wiki_id: the id of the wiki
         '''
 
-        wiki = SolrWikiService().get(wiki_id).get(wiki_id, None)
-        if not wiki:
-            return {'status':400, 'message':'Not Found'}
-
         page_doc_response = ListDocIdsService().get(wiki_id)
         if page_doc_response['status'] != 200:
             return page_doc_response
@@ -524,7 +512,7 @@ class ListDocIdsService(RestfulResource):
     def get(self, wiki_id, start=0, limit=None):
 
         bucket = get_s3_bucket()
-        keys = bucket.list(prefix='xml/%s' % (str(wiki_id)), max_keys=1)
+        keys = bucket.get_all_keys(prefix='xml/%s' % (str(wiki_id)), max_keys=1)
         if len(keys) == 0:
             return {'status':500, 'message':'Wiki not yet processed'}
 

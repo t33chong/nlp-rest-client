@@ -12,12 +12,12 @@ from nlp_client.services import TopEntitiesService
 
 topService = TopEntitiesService()
 
-def sendToWiki(bucketList):
+def sendToWiki(prefix):
     global topService
-    prefix = bucketList.next()
+    prefix
     if isinstance(prefix, Prefix):
         return requests.post('http://search-s11:8983/solr/xwiki/update', 
-                             json.dumps({'entities_txt':topService.nestedGet(prefix.name.split('/')[-1])})
+                             json.dumps({'entities_txt':topService.nestedGet(prefix.name.split('/')[-2])})
                              headers={'Content-type':'application/json'}).content
     return None
 

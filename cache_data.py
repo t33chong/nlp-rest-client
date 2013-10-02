@@ -59,7 +59,7 @@ def call_services(keyname):
                 except:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
 
-                    print "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                    print "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
 
                     print 'Could not call %s on %s!' % (service, doc_id)
         except AttributeError:
