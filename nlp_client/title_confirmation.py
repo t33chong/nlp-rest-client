@@ -1,5 +1,8 @@
 from flask import Flask, request
-from wikicities.DB import LoadBalancer
+try:
+    from wikicities.DB import LoadBalancer
+except:
+    pass #screw it
 from boto import connect_s3
 from optparse import OptionParser
 from gzip import GzipFile

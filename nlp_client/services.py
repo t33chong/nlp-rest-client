@@ -9,12 +9,10 @@ from boto.s3.key import Key
 import socket
 import time
 import title_confirmation
-import cql
 import re
 import nltk
 import xmltodict
 import requests
-import redis
 import types
 import json
 import sys
