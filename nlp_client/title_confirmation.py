@@ -112,7 +112,7 @@ def get_titles_for_wiki_id(wiki_id):
     if USE_S3:
         bucket = connect_s3().get_bucket('nlp-data')
         key = bucket.get_key('article_titles/%s.gz' % str(wiki_id))
-        TITLES = json.loads(zlip.decompress(key.get_contents_as_string()))[wiki_id]
+        TITLES = json.loads(zlib.decompress(key.get_contents_as_string()))[wiki_id]
     else:
         local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
         CURRENT_WIKI_ID = wiki_id
@@ -131,7 +131,7 @@ def get_redirects_for_wiki_id(wiki_id):
     if USE_S3:
         bucket = connect_s3().get_bucket('nlp-data')
         key = bucket.get_key('article_redirects/%s.gz' % str(wiki_id))
-        REDIRECTS = json.loads(zlip.decompress(key.get_contents_as_string()))[wiki_id]
+        REDIRECTS = json.loads(zlib.decompress(key.get_contents_as_string()))[wiki_id]
     else:
         local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
         cursor = local_db.cursor()

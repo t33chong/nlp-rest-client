@@ -1,0 +1,10 @@
+{
+    "services": [
+        "CoreferenceCountsService",
+        "AllNounPhrasesService",
+        "AllVerbPhrasesService",
+        "HeadsService",
+        "SentimentService",
+        "EntityCountsService"
+                ]
+}
