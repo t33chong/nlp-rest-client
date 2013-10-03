@@ -5,7 +5,7 @@ from boto.ec2.autoscale import ScalingPolicy
 
 from optparse import OptionParser
 
-AMI = 'ami-dee37dee'
+AMI = 'ami-6cab355c'
 GROUP_NAME = 'parser'
 DEFAULT_MIN = 4
 DEFAULT_MAX = 20
