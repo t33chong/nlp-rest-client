@@ -3,7 +3,6 @@ from boto.ec2.autoscale import connect_to_region
 from optparse import OptionParser
 from time import sleep
 from datetime import datetime
-import numpy
 
 """
 Monitors the workload in specific intervals and scales up or down
@@ -41,7 +40,7 @@ while True:
     if lastInQueue is not None and lastInQueue != inqueue:
         delta = (lastInQueue - inqueue) 
         intervals += [(mins, delta * 250)]
-        avg = numpy.mean(map(lambda x: float(x[1])/float(x[0]*60), intervals));
+        avg = reduce(lambda x, y: x + y, map(lambda x: float(x[1])/float(x[0]*60), intervals))/len(intervals);
         rate = ", %.3f docs/sec; %d in the last %d minute(s)" % (avg, delta * 250, mins)
     else:
         rate = ""
