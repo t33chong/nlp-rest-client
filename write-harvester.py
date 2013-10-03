@@ -24,11 +24,7 @@ qqfile = sys.argv[1]
 aws = bool(int(sys.argv[2]))
 
 if aws:
-    credentials = json.loads(open('aws.json').read())
-    key = credentials.get('key')
-    secret = credentials.get('secret')
-    conn = S3Connection(key, secret)
-    bucket = conn.get_bucket('nlp-data')
+    bucket = S3Connection().get_bucket('nlp-data')
     k = Key(bucket)
 
 batch_count = 0
