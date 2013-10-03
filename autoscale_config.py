@@ -21,12 +21,12 @@ parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
                   help='The autoscale group name to operate over')
 parser.add_option('-a', '--ami', dest='ami', default=AMI,
                   help='The AMI to use, if creating a group')
+parser.add_option('-r', '--region', dest='region', action='store', default='us-west-2',
+                  help='Amazon region to connect to')
+parser.add_option('-z', '--zones', dest='zones', action='store', default='us-west-2',
+                  help="Availability zones for this autoscale group")
 parser.add_option('-b', '--rebuild', dest='rebuild', action='store_true', default=False,
                   help='Whether to rebuild the group (deletes the old group)')
-parser.add_option('-r', '--region', dest='region', action='store_true', default='us-west-2',
-                  help='Amazon region to connect to')
-parser.add_option('-z', '--zones', dest='zones', action='store_true', default='us-west-2',
-                  help="Availability zones for this autoscale group")
 parser.add_option('-c', '--create', dest='create', action='store_true', default=False,
                   help='Whether to create the group for the first time')
 parser.add_option('-x', '--destroy', dest='destroy', action='store_true', default=False,
