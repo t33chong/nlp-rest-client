@@ -6,7 +6,9 @@ from boto import connect_s3
 from boto.s3.prefix import Prefix
 from multiprocessing import Pool
 from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService
+from nlp_client.caching import useCaching
 
+useCaching(writeOnly=True)
 
 def callServices(wid):
     print "Working on", wid
