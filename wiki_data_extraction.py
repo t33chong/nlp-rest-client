@@ -2,21 +2,23 @@ import requests
 import json
 import traceback
 import sys
+import os
+import random
 from boto import connect_s3
 from boto.s3.prefix import Prefix
 from multiprocessing import Pool
 from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService
 from nlp_client.caching import useCaching
 
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 useCaching(writeOnly=True)
 
 def callServices(wid):
-    print "Working on", wid
     try:
-        print wid, TopEntitiesService().nestedGet(wid)
-        print wid, EntityDocumentCountsService().nestedGet(wid)
-        print wid, TopHeadsService().nestedGet(wid)
-        print "Finished with", wid
+        TopEntitiesService().get(wid)
+        EntityDocumentCountsService().get(wid)
+        TopHeadsService().get(wid)
+        print wid
         return 1
     except:
         print "Problem with", wid
@@ -24,13 +26,6 @@ def callServices(wid):
         print "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     
 
-
-"""
-bucketList = connect_s3().bucket('nlp-data').list(prefix='xml/', delimiter='/')
-pool = Pool(processes=4)
-result = pool.map(sendToWiki, bucketList)
-"""
-
-while True:
-    wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
-    Pool(processes=3).map(callServices, wids)
+# shuffled to improve coverage across a pool
+wids = random.shuffle([prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)])
+Pool(processes=3).map(callServices, wids)
