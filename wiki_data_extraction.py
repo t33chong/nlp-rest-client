@@ -26,6 +26,7 @@ def callServices(wid):
         print "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     
 
+wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
 # shuffled to improve coverage across a pool
-wids = random.shuffle([prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)])
+random.shuffle(wids)
 Pool(processes=3).map(callServices, wids)
