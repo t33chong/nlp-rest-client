@@ -64,14 +64,16 @@ def call_services(keyname):
                     print 'Could not call %s on %s!' % (service, doc_id)
         except AttributeError:
             print 'Unexpected format: %s:' % (filename)
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            print "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         except KeyboardInterrupt:
             sys.exit()
 
     map(processFile, k.get_contents_as_string().split(u'\n'))
-            
+
     print 'EVENT FILE %s COMPLETE' % eventfile
     k.delete()
-    
+
 
 
 pool = Pool(processes=workers)
