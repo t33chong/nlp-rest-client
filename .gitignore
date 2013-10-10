@@ -3,3 +3,4 @@
 aws.json
 *.swp
 WikiaSolr/*
+*.log
