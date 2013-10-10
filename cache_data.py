@@ -79,5 +79,5 @@ def call_services(keyname):
 pool = Pool(processes=workers)
 
 while True:
-    pool.map(call_services, [key.name for key in BUCKET.list(prefix='data_events/')])
-    sleep(30)
+    pool.map(call_services, [key.name for key in BUCKET.list(prefix='data_events/') if key.name.endswith('gz')])
+    time.sleep(30)
