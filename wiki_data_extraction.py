@@ -27,7 +27,9 @@ def callServices(wid):
     
 
 while True:
+    print "Getting wids"
     wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
+    print "Working on %d wids" % len(wids)
     # shuffled to improve coverage across a pool
     random.shuffle(wids)
-    Pool(processes=3).map(callServices, wids)
+    Pool(processes=4).map(callServices, wids)
