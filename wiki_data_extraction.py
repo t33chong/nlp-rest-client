@@ -23,7 +23,9 @@ while True:
             if warmOnly:
                 popen_params += ['1']
             processes += [Popen(popen_params)]
-            processes = filter(lambda x: x.poll() is None, processes)
+
+        processes = filter(lambda x: x.poll() is None, processes)
         sleep(1)
+
     warmOnly = False
     print "Finished"
