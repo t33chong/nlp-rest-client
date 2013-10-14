@@ -1,5 +1,6 @@
 import random
 import sys
+import os
 from time import sleep
 from subprocess import Popen, STDOUT
 from boto import connect_s3
@@ -18,10 +19,10 @@ while True:
     
     while len(wids) > 0:
         while len(processes) < 4 and len(wids) > 0:
-            popen_params = ['python', 'wiki_data_extraction_child.py', wids.pop()]
+            popen_params = ['/usr/bin/python', 'wiki_data_extraction_child.py', wids.pop()]
             if warmOnly:
                 popen_params += ['1']
-            processes += [Popen(popen_params, stdout=STDOUT, shell=True)]
+            processes += [Popen(popen_params)]
             processes = filter(lambda x: x.poll() is None, processes)
         sleep(15)
     warmOnly = False
