@@ -5,7 +5,6 @@ query queue files.
 
 # TODO:
 # Ensure that final batch of <BATCHSIZE goes through
-# Figure out how to send post request with appropriate wiki id
 
 import os
 import sys
@@ -97,18 +96,24 @@ def tar_batch(text_batch_dir):
     """Takes a text batch directory, tars it, and optionally uploads the
     resulting archive to S3"""
     tarball_path = text_batch_dir + '.tgz'
-    logger.info('Archiving batch to %s' % tarball_path)
+    logger.debug('Archiving batch to %s' % tarball_path)
     tarball = tarfile.open(tarball_path, 'w:gz')
     tarball.add(text_batch_dir, '.')
     tarball.close()
+    wids = list(set([docid.split('_')[0] for docid in os.listdir(text_batch_dir)]))
+    logger.debug('%s contains wids: %s' % (tarball_path, ','.join(wids)))
     shutil.rmtree(text_batch_dir)
     if not LOCAL:
-        logger.info('Uploading %s to S3' % os.path.basename(tarball_path))
+        logger.debug('Uploading %s to S3' % os.path.basename(tarball_path))
         k = Key(bucket)
         k.key = 'text_events/%s' % os.path.basename(tarball_path)
         k.set_contents_from_filename(tarball_path)
         os.remove(tarball_path)
+        for wid in wids:
+            requests.post('http://nlp-s1:5000/wiki/%i' % wid)
         return 'Tarball %s uploaded to S3' % os.path.basename(tarball_path)
+    with open('/data/tarball_key.txt', 'a') as f:
+        f.write('%s\t%s\n' % (tarball_path, ','.join(wids)))
     return 'Tarball stored locally at %s' % tarball_path
 
 def tar_worker(text_file_queue, tar_result_queue):
@@ -121,8 +126,8 @@ def tar_worker(text_file_queue, tar_result_queue):
         try:
             shutil.move(text_file, os.path.join(temp_text_batch_dir, os.path.basename(text_file)))
             files_in_batch += 1
-            # Call tar_batch() if batch meets size requirement or if queue is empty
-            if files_in_batch >= BATCHSIZE or text_file_queue.empty():
+            # Call tar_batch() if batch meets size requirement
+            if files_in_batch >= BATCHSIZE:
                 logger.info('Writing batch of size %i to %s' % (files_in_batch, temp_text_batch_dir))
                 tar_result = tar_batch(temp_text_batch_dir)
                 tar_result_queue.put(tar_result)
@@ -130,6 +135,13 @@ def tar_worker(text_file_queue, tar_result_queue):
                 temp_text_batch_dir = ensure_dir_exists(os.path.join(TEMP_TEXT_DIR, str(uuid.uuid4())))
         except:
             logger.error(traceback.print_exc())
+    # Handle final batch in the queue in case it doesn't meet BATCHSIZE requirement
+    try:
+        logger.info('Writing batch of size %i to %s' % (files_in_batch, temp_text_batch_dir))
+        tar_result = tar_batch(temp_text_batch_dir)
+        tar_result_queue.put(tar_result)
+    except:
+        logger.error(traceback.print_exc())
 
 if __name__ == '__main__':
     while True:
@@ -163,3 +175,6 @@ if __name__ == '__main__':
 
         for tar_result in iter(tar_result_queue.get, None):
             logger.info(tar_result)
+
+        if not text_file_queue.empty():
+            pass
