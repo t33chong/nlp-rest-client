@@ -44,11 +44,11 @@ def get_local_db_from_options(options, global_db):
 
     return result
 
-def get_global_db():
+def get_global_db(master=False):
     lb = LoadBalancer(get_config())
-    return lb.get_db_by_name('wikicities')
+    return lb.get_db_by_name('wikicities', master=master)
 
-def get_local_db_from_wiki_id(global_db, wiki_id):
+def get_local_db_from_wiki_id(global_db, wiki_id, master=False):
     global CURRENT_WIKI_ID
     cursor = get_global_db().cursor()
     sql = "SELECT city_id, city_dbname FROM city_list WHERE city_id = %s" % str(wiki_id)
@@ -58,7 +58,7 @@ def get_local_db_from_wiki_id(global_db, wiki_id):
         raise ValueError("No wiki found")
 
     CURRENT_WIKI_ID = result[0]
-    return LoadBalancer(get_config()).get_db_by_name(result[1]) 
+    return LoadBalancer(get_config()).get_db_by_name(result[1], master=master) 
 
 def get_namespaces(global_db, wiki_id):
     """ Accesses the default content namespaces for the wiki

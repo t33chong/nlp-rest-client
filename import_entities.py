@@ -14,7 +14,7 @@ useCaching()
 
 """
 counts = EntityCountsService()
-localdb = get_local_db_from_wiki_id(get_global_db(), wid)
+localdb = get_local_db_from_wiki_id(get_global_db(), wid, master=True)
 
 values = []
 for docId in ListDocIdsService().nestedGet(wid):
@@ -27,12 +27,14 @@ for docId in ListDocIdsService().nestedGet(wid):
         pass
     
 for i in range(0, len(values), 10):
-    localdb.execute("INSERT INTO `page_wikia_props` (`page_id`, `propname`, `props`) VALUES " % ", ".join(map(lambda x: (x[0], PAGE_PROP_ENTITIES, x[1]), values[i:i+10])))
+    localdb.cursor().execute("INSERT INTO `page_wikia_props` (`page_id`, `propname`, `props`) VALUES " % ", ".join(map(lambda x: (x[0], PAGE_PROP_ENTITIES, x[1]), values[i:i+10])))
 """
 
 response = TopEntitiesService().get(wid)
 if response.get('status') == 200:
-    top_entities = response[wid][:10]
+    top_entities = [x[0] for x in response[wid][:5]]
+    print response
     dumped = phpserialize.dumps(top_entities).replace('"', '\"')
     sql = "INSERT INTO `city_variables` (`cv_city_id`, `cv_variable_id`, `cv_value`) VALUES (%s, %d, \"%s\");" % (wid, WIKI_ENTITIES_ID, dumped)
-    get_global_db().execute(sql)
+    print sql
+    #get_global_db(master=True).cursor().execute(sql)
