@@ -14,6 +14,7 @@ import tarfile
 import requests
 from optparse import OptionParser
 from multiprocessing import Process, Queue
+from subprocess import Popen
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
 from utils import clean_list, ensure_dir_exists
@@ -41,21 +42,24 @@ parser.add_option("-l", "--local", dest="local", action="store_true", default=Fa
 WORKERS = options.workers
 LOCAL = options.local
 
-EVENT_DIR = '/data/events/'
-TEMP_EVENT_DIR = '/data/temp_events/'
-TEXT_DIR = '/data/text/'
-TEMP_TEXT_DIR = '/data/temp_text/'
+EVENT_DIR = ensure_dir_exists('/data/events/')
+TEMP_EVENT_DIR = ensure_dir_exists('/data/temp_events/')
+TEXT_DIR = ensure_dir_exists('/data/text/')
+TEMP_TEXT_DIR = ensure_dir_exists('/data/temp_text/')
 
 def write_text(event_file):
+    """Takes event file as input, writes text from all queries containted in
+    event file to TEXT_DIR, and returns the number of documents written"""
     doc_count = 0
     for line in open(event_file):
         query = line.strip()
-        logger.info('query: "%s"' % query)
+        logger.info('Writing query: "%s"' % query)
         qi = QueryIterator('http://search-s11.prod.wikia.net:8983/solr/main/', {'query': query, 'fields': 'id,wid,html_en,indexed', 'sort': 'id asc'})
         for doc in qi:
             # sanitize and write text
             text = '\n'.join(clean_list(doc.get('html_en', '')))
             localpath = os.path.join(TEXT_DIR, doc['id'])
+            logger.debug('writing to %' % localpath)
             with open(localpath, 'w') as f:
                 f.write(text)
             doc_count += 1
@@ -66,9 +70,13 @@ def write_worker(event_queue, count_queue):
     output"""
     try:
         for event_file in iter(event_queue.get, None):
-            doc_count = write_text(event_file)
+            temp_event_file = os.path.join(TEMP_EVENT_DIR, os.path.basename(event_file))
+            shutil.move(event_file, temp_event_file)
+            doc_count = write_text(temp_event_file)
+            os.remove(event_file)
             count_queue.put(doc_count)
-    except Exception, e:
+    except Exception as e:
+        logger.error('%s: %s' % (type(e).__name__, e))
         count_queue.put(0)
 
 if __name__ == '__main__':
@@ -95,9 +103,5 @@ if __name__ == '__main__':
             tempdir = os.path.join(TEXT_TEMP_DIR, tempid)
             for text_file in text_files[:500]:
                 shutil.move(text_file, os.path.join(tempdir, os.path.basename(text_file)))
-            # tar batch
-            tar_file = text_dir + '.tgz'
-            tar = tarfile.open(tar_file, 'w:gz')
-            tar.add(text_dir, '.')
-            tar.close()
+            Popen('python %s %s %i' % ('tar_batch.py', tempdir, int(LOCAL)), shell=True)
             batch_count -= 500
