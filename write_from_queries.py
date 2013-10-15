@@ -3,6 +3,10 @@ Iterates over query queue files and writes text from queries specified in the
 query queue files.
 """
 
+# TODO:
+# Ensure that final batch of <BATCHSIZE goes through
+# Figure out how to send post request with appropriate wiki id
+
 import os
 import sys
 import json
@@ -13,6 +17,7 @@ import logging
 import tarfile
 import requests
 import traceback
+from time import sleep
 from optparse import OptionParser
 from multiprocessing import Process, Queue
 from multiprocessing.process import current_process
@@ -37,11 +42,14 @@ workers = nlp_config['workers']
 parser = OptionParser()
 parser.add_option("-n", "--workers", dest="workers", action="store", default=workers,
                   help="Specify the number of worker processes to open")
+parser.add_option("-b", "--batchsize", dest="batchsize", action="store", default=500,
+                  help="Specify the number of worker processes to open")
 parser.add_option("-l", "--local", dest="local", action="store_true", default=False,
                   help="Specify whether to store text files locally instead of on S3")
 (options, args) = parser.parse_args()
 
 WORKERS = options.workers
+BATCHSIZE = options.batchsize
 LOCAL = options.local
 
 EVENT_DIR = ensure_dir_exists('/data/events/')
@@ -49,10 +57,13 @@ TEMP_EVENT_DIR = ensure_dir_exists('/data/temp_events/')
 TEXT_DIR = ensure_dir_exists('/data/text/')
 TEMP_TEXT_DIR = ensure_dir_exists('/data/temp_text/')
 
+if not LOCAL:
+    bucket = S3Connection().get_bucket('nlp-data')
+
 def write_text(event_file):
     """Takes event file as input, writes text from all queries contained in
-    event file to TEXT_DIR, and returns the number of documents written"""
-    doc_count = 0
+    event file to TEXT_DIR, and returns a list of documents written"""
+    text_files = []
     for line in open(event_file):
         query = line.strip()
         logger.info('Writing query from %s: "%s"' % (current_process(), query))
@@ -61,52 +72,94 @@ def write_text(event_file):
             # sanitize and write text
             text = '\n'.join(clean_list(doc.get('html_en', '')))
             localpath = os.path.join(TEXT_DIR, doc['id'])
-            logger.debug('writing to %s' % localpath)
+            logger.debug('Writing text from %s to %s' % (doc['id'], localpath))
             with open(localpath, 'w') as f:
                 f.write(text)
-            doc_count += 1
-    return doc_count
+            text_files.append(localpath)
+    return text_files
 
-def write_worker(event_queue, count_queue):
-    """Takes queue of event files as input, returns count of docs written as
-    output"""
-    try:
-        for event_file in iter(event_queue.get, None):
+def write_worker(event_queue, text_file_queue):
+    """Takes queue of event files, moves each file to TEMP_EVENT_DIR, calls
+    write_text() on the aforementioned file, and adds the returned list of
+    written files to a queue of text files"""
+    for event_file in iter(event_queue.get, None):
+        try:
             temp_event_file = os.path.join(TEMP_EVENT_DIR, os.path.basename(event_file))
             shutil.move(event_file, temp_event_file)
-            doc_count = write_text(temp_event_file)
+            text_files = write_text(temp_event_file)
+            for text_file in text_files:
+                text_file_queue.put(text_file)
             os.remove(temp_event_file)
-            count_queue.put(doc_count)
-    except Exception as e:
-        #logger.error('%s: %s' % (type(e).__name__, e))
-        logger.error(traceback.print_exc())
-        count_queue.put(0)
+        except:
+            logger.error(traceback.print_exc())
+
+def tar_batch(text_batch_dir):
+    """Takes a text batch directory, tars it, and optionally uploads the
+    resulting archive to S3"""
+    tarball_path = text_batch_dir + '.tgz'
+    logger.info('Archiving batch to %s' % tarball_path)
+    tarball = tarfile.open(tarball_path, 'w:gz')
+    tarball.add(text_batch_dir, '.')
+    tarball.close()
+    shutil.rmtree(text_batch_dir)
+    if not LOCAL:
+        logger.info('Uploading %s to S3' % os.path.basename(tarball_path))
+        k = Key(bucket)
+        k.key = 'text_events/%s' % os.path.basename(tarball_path)
+        k.set_contents_from_filename(tarball_path)
+        os.remove(tarball_path)
+        return 'Tarball %s uploaded to S3' % os.path.basename(tarball_path)
+    return 'Tarball stored locally at %s' % tarball_path
+
+def tar_worker(text_file_queue, tar_result_queue):
+    """Takes queue of text files, moves them to individual subdirectories of
+    TEMP_TEXT_DIR in batches of BATCHSIZE, calls tar_batch() on the aforementioned
+    subdirectories, and adds the returned result to a queue"""
+    files_in_batch = 0
+    temp_text_batch_dir = ensure_dir_exists(os.path.join(TEMP_TEXT_DIR, str(uuid.uuid4())))
+    for text_file in iter(text_file_queue.get, None):
+        try:
+            shutil.move(text_file, os.path.join(temp_text_batch_dir, os.path.basename(text_file)))
+            files_in_batch += 1
+            # Call tar_batch() if batch meets size requirement or if queue is empty
+            if files_in_batch >= BATCHSIZE or text_file_queue.empty():
+                logger.info('Writing batch of size %i to %s' % (files_in_batch, temp_text_batch_dir))
+                tar_result = tar_batch(temp_text_batch_dir)
+                tar_result_queue.put(tar_result)
+                files_in_batch = 0
+                temp_text_batch_dir = ensure_dir_exists(os.path.join(TEMP_TEXT_DIR, str(uuid.uuid4())))
+        except:
+            logger.error(traceback.print_exc())
 
 if __name__ == '__main__':
-    # List of query queue files to iterate over
-    event_files = [os.path.join(EVENT_DIR, event_file) for event_file in os.listdir(EVENT_DIR)]
-    event_queue = Queue()
-    count_queue = Queue()
+    while True:
+        # List of query queue files to iterate over
+        event_files = [os.path.join(EVENT_DIR, event_file) for event_file in os.listdir(EVENT_DIR)]
+        logging.info('Iterating over %i event files...' % len(event_files))
 
-    for event_file in event_files:
-        event_queue.put(event_file)
+        # If there are no query queue files present, wait and retry
+        if not event_files:
+            logger.info('No event files found, sleeping for 60 seconds...')
+            sleep(60)
+            continue
 
-    write_workers = [Process(target=write_worker, args=(event_queue, count_queue)) for n in range(WORKERS)]
+        event_queue = Queue()
+        text_file_queue = Queue()
 
-    for write_worker in write_workers:
-        write_worker.start()
+        for event_file in event_files:
+            event_queue.put(event_file)
 
-    batch_count = 0
-    for count in iter(count_queue.get, None):
-        batch_count += count
-        if batch_count > 500:
-            text_files = [(os.path.join(TEXT_DIR, filename), os.path.getmtime(filename)) for filename in os.listdir(TEXT_DIR)]
-            text_files.sort(key=lambda x: x[1])
-            tempid = str(uuid.uuid4())
-            tempdir = os.path.join(TEXT_TEMP_DIR, tempid)
-            for text_file in text_files[:500]:
-                shutil.move(text_file, os.path.join(tempdir, os.path.basename(text_file)))
-            command = 'python %s %s %i' % ('tar_batch.py', tempdir, int(LOCAL))
-            logging.info('Opening subprocess: %s' % command)
-            Popen(command, shell=True)
-            batch_count -= 500
+        write_workers = [Process(target=write_worker, args=(event_queue, text_file_queue)) for n in range(WORKERS)]
+
+        for write_worker in write_workers:
+            write_worker.start()
+
+        tar_result_queue = Queue()
+
+        tar_workers = [Process(target=tar_worker, args=(text_file_queue, tar_result_queue)) for n in range(WORKERS)]
+
+        for tar_worker in tar_workers:
+            tar_worker.start()
+
+        for tar_result in iter(tar_result_queue.get, None):
+            logger.info(tar_result)
