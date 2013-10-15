@@ -12,8 +12,10 @@ import shutil
 import logging
 import tarfile
 import requests
+import traceback
 from optparse import OptionParser
 from multiprocessing import Process, Queue
+from multiprocessing.process import current_process
 from subprocess import Popen
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
@@ -22,7 +24,7 @@ from WikiaSolr import QueryIterator
 
 # Set up logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 fh = logging.FileHandler('write_text.log')
 fh.setLevel(logging.ERROR)
 logger.addHandler(fh)
@@ -48,18 +50,18 @@ TEXT_DIR = ensure_dir_exists('/data/text/')
 TEMP_TEXT_DIR = ensure_dir_exists('/data/temp_text/')
 
 def write_text(event_file):
-    """Takes event file as input, writes text from all queries containted in
+    """Takes event file as input, writes text from all queries contained in
     event file to TEXT_DIR, and returns the number of documents written"""
     doc_count = 0
     for line in open(event_file):
         query = line.strip()
-        logger.info('Writing query: "%s"' % query)
+        logger.info('Writing query from %s: "%s"' % (current_process(), query))
         qi = QueryIterator('http://search-s11.prod.wikia.net:8983/solr/main/', {'query': query, 'fields': 'id,wid,html_en,indexed', 'sort': 'id asc'})
         for doc in qi:
             # sanitize and write text
             text = '\n'.join(clean_list(doc.get('html_en', '')))
             localpath = os.path.join(TEXT_DIR, doc['id'])
-            logger.debug('writing to %' % localpath)
+            logger.debug('writing to %s' % localpath)
             with open(localpath, 'w') as f:
                 f.write(text)
             doc_count += 1
@@ -73,10 +75,11 @@ def write_worker(event_queue, count_queue):
             temp_event_file = os.path.join(TEMP_EVENT_DIR, os.path.basename(event_file))
             shutil.move(event_file, temp_event_file)
             doc_count = write_text(temp_event_file)
-            os.remove(event_file)
+            os.remove(temp_event_file)
             count_queue.put(doc_count)
     except Exception as e:
-        logger.error('%s: %s' % (type(e).__name__, e))
+        #logger.error('%s: %s' % (type(e).__name__, e))
+        logger.error(traceback.print_exc())
         count_queue.put(0)
 
 if __name__ == '__main__':
@@ -103,5 +106,7 @@ if __name__ == '__main__':
             tempdir = os.path.join(TEXT_TEMP_DIR, tempid)
             for text_file in text_files[:500]:
                 shutil.move(text_file, os.path.join(tempdir, os.path.basename(text_file)))
-            Popen('python %s %s %i' % ('tar_batch.py', tempdir, int(LOCAL)), shell=True)
+            command = 'python %s %s %i' % ('tar_batch.py', tempdir, int(LOCAL))
+            logging.info('Opening subprocess: %s' % command)
+            Popen(command, shell=True)
             batch_count -= 500

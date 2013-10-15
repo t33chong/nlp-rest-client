@@ -7,12 +7,22 @@ import os
 import sys
 import shutil
 import tarfile
+import logging
+from write_from_queries import TEMP_TEXT_DIR
 
 DIRECTORY = sys.argv[1]
 LOCAL = sys.argv[2]
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler('tar_batch.log')
+fh.setLevel(logging.ERROR)
+logger.addHandler(fh)
+
 # archive
-tarname = DIRECTORY + '.tgz'
+#tarname = DIRECTORY + '.tgz'
+tarname = os.path.join(TEMP_TEXT_DIR, os.path.basename(DIRECTORY) + '.tgz')
+logger.debug('archiving batch to %s' % tarname)
 tar = tarfile.open(tarname, 'w:gz')
 tar.add(DIRECTORY, '.')
 tar.close()
