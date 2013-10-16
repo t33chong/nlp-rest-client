@@ -177,4 +177,4 @@ if __name__ == '__main__':
             logger.info(tar_result)
 
         if not text_file_queue.empty():
-            pass
+            pass # TODO
