@@ -18,7 +18,7 @@ while True:
     processes = []
     
     while len(wids) > 0:
-        while len(processes) < 4 and len(wids) > 0:
+        while len(processes) < 1 and len(wids) > 0:
             popen_params = ['/usr/bin/python', 'wiki_data_extraction_child.py', wids.pop()]
             if warmOnly:
                 popen_params += ['1']
