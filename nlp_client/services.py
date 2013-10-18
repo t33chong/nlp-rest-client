@@ -124,11 +124,14 @@ class ParsedJsonService(RestfulResource):
         response = MEMOIZED_JSON.get(doc_id, {})
 
         if len(response) == 0:
-            xmlResponse = ParsedXmlService().get(doc_id)
-            if xmlResponse['status'] != 200:
-                return xmlResponse
-            MEMOIZED_JSON[doc_id] = {'status':200, doc_id: xmltodict.parse(xmlResponse[doc_id])}
-            response = MEMOIZED_JSON[doc_id]
+            try:
+                xmlResponse = ParsedXmlService().get(doc_id)
+                if xmlResponse['status'] != 200:
+                    return xmlResponse
+                MEMOIZED_JSON[doc_id] = {'status':200, doc_id: xmltodict.parse(xmlResponse[doc_id])}
+                response = MEMOIZED_JSON[doc_id]
+            except Exception as e:
+                return {'status': 500, 'message': str(e)}
         
         return response
 
@@ -405,15 +408,18 @@ class EntityCountsService(RestfulResource):
         counts ={}
 
         for val in entitiesresponse['titles']:
-            canonical = entitiesresponse['redirects'].get(val, val)
-            if canonical in coref_mention_keys:
-                counts[canonical] = len(paraphrases[canonical])
-            elif canonical != val and val in coref_mention_keys:
-                counts[canonical] = len(paraphrases[val])
-            elif canonical in coref_mention_values:
-                counts[canonical] = len(filter(lambda x: canonical in x[1], paraphrases.items())[0][1])
-            elif canonical != val and val in coref_mention_values:
-                counts[canonical] = len(filter(lambda x: val in x[1], paraphrases.items())[0][1])
+            try:
+                canonical = entitiesresponse['redirects'].get(val, val)
+                if canonical in coref_mention_keys:
+                    counts[canonical] = len(paraphrases[canonical])
+                elif canonical != val and val in coref_mention_keys:
+                    counts[canonical] = len(paraphrases[val])
+                elif canonical in coref_mention_values:
+                    counts[canonical] = len(filter(lambda x: canonical in x[1], paraphrases.items())[0][1])
+                elif canonical != val and val in coref_mention_values:
+                    counts[canonical] = len(filter(lambda x: val in x[1], paraphrases.items())[0][1])
+            except:
+                pass
 
         return {doc_id: counts, 'status': 200}
 
