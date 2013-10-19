@@ -3,17 +3,11 @@ Iterates over query queue files and writes text from queries specified in the
 query queue files.
 """
 
-# TODO: avoid race conditions with query queue files
-
 import os
-import sys
 import json
-import uuid
 import socket
 import shutil
 import logging
-import tarfile
-import requests
 import traceback
 from time import sleep
 from optparse import OptionParser
@@ -55,7 +49,7 @@ def write_text(event_file):
         logger.info('Writing query from %s: "%s"' % (current_process(), query))
         qi = QueryIterator('http://search-s11.prod.wikia.net:8983/solr/main/', {'query': query, 'fields': 'id,wid,html_en,indexed', 'sort': 'id asc'})
         for doc in qi:
-            # sanitize and write text
+            # Sanitize and write text
             text = '\n'.join(clean_list(doc.get('html_en', '')))
             localpath = os.path.join(TEXT_DIR, doc['id'])
             logger.debug('Writing text from %s to %s' % (doc['id'], localpath))
@@ -68,21 +62,22 @@ def write_worker(event_queue, result_queue):
     write_text() on the aforementioned file, and adds the returned list of
     written files to a queue of text files"""
     for event_file in iter(event_queue.get, None):
-        #try:
-        temp_event_file = os.path.join(TEMP_EVENT_DIR, os.path.basename(event_file))
-        shutil.move(event_file, temp_event_file)
-        results = write_text(temp_event_file)
-        for result in results:
-            result_queue.put(result)
-        os.remove(temp_event_file)
-        #except:
-        #    logger.error(traceback.print_exc())
+        try:
+            results = write_text(event_file)
+            for result in results:
+                result_queue.put(result)
+            os.remove(event_file)
+        except:
+            logger.error(traceback.print_exc())
 
 if __name__ == '__main__':
+    event_queue = Queue()
+    result_queue = Queue()
+
     while True:
         # List of query queue files to iterate over
         event_files = [os.path.join(EVENT_DIR, event_file) for event_file in os.listdir(EVENT_DIR)]
-        logging.info('Iterating over %i event files...' % len(event_files))
+        logger.info('Iterating over %i event files...' % len(event_files))
 
         # If there are no query queue files present, wait and retry
         if not event_files:
@@ -90,11 +85,10 @@ if __name__ == '__main__':
             sleep(60)
             continue
 
-        event_queue = Queue()
-        result_queue = Queue()
-
         for event_file in event_files:
-            event_queue.put(event_file)
+            temp_event_file = os.path.join(TEMP_EVENT_DIR, os.path.basename(event_file))
+            shutil.move(event_file, temp_event_file)
+            event_queue.put(temp_event_file)
 
         workers = [Process(target=write_worker, args=(event_queue, result_queue)) for n in range(WORKERS)]
 
