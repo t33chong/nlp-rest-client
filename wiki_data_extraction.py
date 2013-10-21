@@ -11,7 +11,7 @@ sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 warmOnly = True
 while True:
     print "Getting wids"
-    wids = [str(int(line)) for line in open('topwams.txt').readlines()]
+    wids = [str(int(line)) for line in open('bustedtopwams.txt').readlines()]
     #wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
     print "Working on %d wids" % len(wids)
     # shuffled to improve coverage across a pool
