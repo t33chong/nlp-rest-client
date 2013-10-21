@@ -18,10 +18,13 @@ from WikiaSolr import QueryIterator
 
 # Set up logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 fh = logging.FileHandler('query_write.log')
 fh.setLevel(logging.ERROR)
 logger.addHandler(fh)
+sh = logging.StreamHandler()
+sh.setLevel(logging.INFO)
+logger.addHandler(sh)
 
 # Load default values from config file
 nlp_config = json.loads(open('nlp-config.json').read())[socket.gethostname()]
@@ -29,13 +32,12 @@ workers = nlp_config['workers']
 
 # Allow user to configure options
 parser = OptionParser()
-parser.add_option("-n", "--workers", dest="workers", action="store", default=workers,
-                  help="Specify the number of worker processes to open")
+parser.add_option("-n", "--workers", dest="workers", action="store", default=workers, help="Specify the number of worker processes to open")
 (options, args) = parser.parse_args()
 
-WORKERS = options.workers
+WORKERS = int(options.workers)
 
-# Directory variables for query_write and query_tar are set here
+# Directory variables for query_write are set here; set vars for query_tar there
 EVENT_DIR = ensure_dir_exists('/data/events/')
 TEMP_EVENT_DIR = ensure_dir_exists('/data/temp_events/')
 TEXT_DIR = ensure_dir_exists('/data/text/')
