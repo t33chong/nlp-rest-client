@@ -58,7 +58,7 @@ def per_service_caching(services=None):
     return PER_SERVICE_CACHING
 
 
-def useCaching(writeOnly = False, readOnly = False, per_service_caching={}):
+def useCaching(writeOnly = False, readOnly = False, perServiceCaching={}):
     ''' Invoke this to set CACHE_BUCKET and enable caching on these services 
     :param write_only: whether we should avoid reading from the cache
     :param read_only: whether we should avoid writing to the cache
@@ -67,7 +67,7 @@ def useCaching(writeOnly = False, readOnly = False, per_service_caching={}):
     bucket(connect_s3().get_bucket('nlp-data'))
     read_only(readOnly)
     write_only(writeOnly)
-    per_service_caching(per_service_caching)
+    per_service_caching(perServiceCaching)
 
 
 def purgeCacheForDoc(doc_id):
