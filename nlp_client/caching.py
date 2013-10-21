@@ -14,6 +14,7 @@ CACHE_BUCKET = None
 
 WRITE_ONLY = False
 READ_ONLY = False
+PER_SERVICE_CACHING = {}
 
 def bucket(new_bucket = None):
     ''' Access & mutate so we don't have globals in every function
@@ -45,15 +46,28 @@ def write_only(mutate = None):
         WRITE_ONLY = mutate
     return WRITE_ONLY
 
+def per_service_caching(services=None):
+    ''' Store a dict of per-service cache options.
+    :param services: a dict of the following structure:
+                     { service_name : { 'read_only': True, 'write_only': False } }
+                     -- if these values aren't set, the default is the globally set value
+    '''
+    global PER_SERVICE_CACHING
+    if services is not None:
+        PER_SERVICE_CACHING = services
+    return PER_SERVICE_CACHING
 
-def useCaching(writeOnly = False, readOnly = False):
+
+def useCaching(writeOnly = False, readOnly = False, perServiceCaching={}):
     ''' Invoke this to set CACHE_BUCKET and enable caching on these services 
     :param write_only: whether we should avoid reading from the cache
     :param read_only: whether we should avoid writing to the cache
+    :param per_service_caching: 
     '''
     bucket(connect_s3().get_bucket('nlp-data'))
     read_only(readOnly)
     write_only(writeOnly)
+    per_service_caching(perServiceCaching)
 
 
 def purgeCacheForDoc(doc_id):
@@ -65,17 +79,6 @@ def purgeCacheForDoc(doc_id):
     prefix = 'service_responses/%s' % doc_id.replace('_', '/')
     return b.delete_keys([key for key in b.list(prefix=prefix)])
     
-
-# Deprecated for now -- not something s3 supports (prefixes, not suffixes)
-#
-#def purgeCacheForService(service_and_method):
-#    ''' Remove cached service responses for a given service
-#    :param service_and_method: the ServiceName.method
-#    '''
-#    cursor = db().cursor()
-#    cursor.execute("SELECT signature FROM service_responses WHERE service = :service", params={'service':service_and_method})
-#    return purgeCacheForSignatures([result[0] for result in cursor])
-
 
 def purgeCacheForWiki(wiki_id):
     ''' Remove cached service responses for a given wiki id
@@ -106,12 +109,12 @@ def cachedServiceRequest(getMethod):
             path = 'service_responses/%s/%s' % (doc_id.replace('_', '/'), service)
             
             result = None
-            if not write_only():
+            if not per_service_caching().get(service, {}).get('write_only', write_only()):
                 result = b.get_key(path)
 
             if result is None:
                 response = getMethod(self, *args, **kw)
-                if response['status'] == 200 and not read_only():
+                if response['status'] == 200 and not per_service_caching().get(service, {}).get('read_only', read_only()):
                     key = b.new_key(key_name=path)
                     key.set_contents_from_string(json.dumps(response))
 
