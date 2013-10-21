@@ -6,7 +6,7 @@ from nlp_client.services import TopEntitiesService, EntityDocumentCountsService,
 from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-useCaching(writeOnly=True, services={'EntityCountsService.get': {'write_only': False}) # reuse entity counts for now
+useCaching() # reuse everything for now, right?
 
 
 def callServices(wid):
@@ -31,7 +31,7 @@ def process(x):
 
 
 wid = sys.argv[1]
-if len(sys.argv) > 2:
+if False and len(sys.argv) > 2:
     process(wid)
 else:
     callServices(wid)
