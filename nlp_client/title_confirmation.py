@@ -7,6 +7,8 @@ from boto import connect_s3
 from optparse import OptionParser
 from gzip import GzipFile
 from StringIO import StringIO
+from urllib import quote_plus
+import zlib
 import phpserialize
 import re
 import json
@@ -90,6 +92,19 @@ def preprocess(title):
     :param row: cursor title
     """
     return re.sub(' \(\w+\)', '', title.lower().replace('_', ' ')) #todo fix unicode shit
+
+def get_wp_key_for_title(title):
+    return 'wikipedia_titles/'+quote_plus(preprocess(title)[:4])+'.gz'
+
+
+def check_wp(title):
+    """ Checks if a "title" is a title in wikipedia
+    :param title: string
+    """
+    key = connect_s3().get_bucket('nlp-data').get_key(get_wp_key_for_title(title))
+    if key is not None:
+        return title in zlib.decompress(key.get_contents_as_string(), 16+zlib.MAX_WBITS).split("\n")
+    return False
 
 
 @app.route("/", methods=['POST'])
