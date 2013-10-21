@@ -7,6 +7,7 @@ import sys
 import json
 import gzip
 import logging
+import traceback
 from multiprocessing import Pool
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 fh = logging.FileHandler('dump_titles.log')
-fh.setLevel(logging.DEBUG)
+fh.setLevel(logging.ERROR)
 
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
@@ -47,6 +48,7 @@ def call_titles(doc):
         os.remove(titles_file)
     except:
         logger.error('TITLES SERVICE FAILED ON %s!' % doc)
+        logger.error(traceback.format_exc())
         #raise
 
 def call_redirects(doc):
@@ -62,6 +64,7 @@ def call_redirects(doc):
         os.remove(redirects_file)
     except:
         logger.error('REDIRECTS SERVICE FAILED ON %s!' % doc)
+        logger.error(traceback.format_exc())
         #raise
 
 def call_both(doc):
@@ -71,7 +74,7 @@ def call_both(doc):
 
 def gen_docs():
     """Generator that yields the wiki id of each result in the QueryIterator"""
-    qi = QueryIterator('http://search-s10:8983/solr/xwiki/', {'query': 'lang_s:en', 'fields': 'id', 'sort': 'wam_i desc', 'start': 1000})
+    qi = QueryIterator('http://search-s10:8983/solr/xwiki/', {'query': 'lang_s:en', 'fields': 'id', 'sort': 'wam_i desc', 'start': 0})
     for doc in qi:
         logger.debug('yielding %s...' % doc['id'])
         yield doc['id']
