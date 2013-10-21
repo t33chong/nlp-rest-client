@@ -6,7 +6,7 @@ from nlp_client.services import TopEntitiesService, EntityDocumentCountsService,
 from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-useCaching(writeOnly=True)
+useCaching(writeOnly=True, services={'EntityCountsService.get': {'write_only': False}) # reuse entity counts for now
 
 
 def callServices(wid):
