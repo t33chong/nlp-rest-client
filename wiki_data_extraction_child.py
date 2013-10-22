@@ -6,7 +6,7 @@ from nlp_client.services import TopEntitiesService, EntityDocumentCountsService,
 from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-useCaching() # reuse everything for now, right?
+useCaching(perServiceCaching={'TopEntitiesService.get': {'write_only': True}, 'EntityDocumentCountsService.get' : {'write_only': True}, 'TopHeadsService.get': {'write_only': True}, 'WikiEntitiesService.get': {'write_only': True}})
 
 
 def callServices(wid):
