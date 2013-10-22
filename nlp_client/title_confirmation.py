@@ -5,9 +5,10 @@ except:
     pass #screw it
 from boto import connect_s3
 from optparse import OptionParser
-from gzip import GzipFile
+from gzip import GzipFile, open as gzopen
 from StringIO import StringIO
 from urllib import quote_plus
+import sys
 import zlib
 import phpserialize
 import re
@@ -15,8 +16,7 @@ import json
 import time
 
 """ Memoization variables """
-TITLES, REDIRECTS, CURRENT_WIKI_ID, USE_S3 = [], {}, None, True
-
+TITLES, REDIRECTS, CURRENT_WIKI_ID, USE_S3, WP_SEEN, ALL_WP = [], {}, None, True, [], {}
 
 yml = '/usr/wikia/conf/current/DB.yml'
 app = Flask(__name__)
@@ -98,14 +98,55 @@ def get_wp_key_for_title(title):
 
 
 def check_wp(title):
-    """ Checks if a "title" is a title in wikipedia
+    """ Checks if a "title" is a title in wikipedia first using memoization cache, then check_wp_s3
     :param title: string
     """
-    key = connect_s3().get_bucket('nlp-data').get_key(get_wp_key_for_title(title))
-    if key is not None:
-        return title in zlib.decompress(key.get_contents_as_string(), 16+zlib.MAX_WBITS).split("\n")
-    return False
+    global WP_SEEN
+    return title in WP_SEEN or check_wp_s3(title)
 
+_end = '_end_'
+def make_trie(*words):
+     root = dict()
+     for word in words:
+         current_dict = root
+         for letter in word:
+             current_dict = current_dict.setdefault(letter, {})
+         current_dict = current_dict.setdefault(_end, _end)
+     return root
+
+def in_trie(trie, word):
+     current_dict = trie
+     for letter in word:
+         if letter in current_dict:
+             current_dict = current_dict[letter]
+         else:
+             return False
+     else:
+         if _end in current_dict:
+             return True
+         else:
+             return False
+
+def check_wp_s3(title):
+    """ Checks if a "title" is a title in wikipedia using s3
+    :param title: string
+    """
+    global WP_SEEN, ALL_WP
+    if len(ALL_WP) == {}:
+        ALL_WP = json.loads(connect_s3().get_bucket('nlp-data').get_key('wikipedia_titles/trie.json'), ensure_ascii=False)
+    return in_trie(ALL_WP, preprocess(title))
+    """
+    try:
+        key = connect_s3().get_bucket('nlp-data').get_key(get_wp_key_for_title(title))
+        if key is not None and title in zlib.decompress(key.get_contents_as_string(), 16+zlib.MAX_WBITS).split("\n"):
+            WP_SEEN += [title]
+            return True
+        return False
+    except KeyboardInterrupt:
+        sys.exit()
+    except:
+        return False
+    """
 
 @app.route("/", methods=['POST'])
 def is_title_legit():
