@@ -14,8 +14,8 @@ def callServices(wid):
         TopEntitiesService().get(wid)
         EntityDocumentCountsService().get(wid)
         TopHeadsService().get(wid)
-        WpTopEntitiesService().get(wid)
-        WpEntityCountsService().get(wid)
+        #WpTopEntitiesService().get(wid)
+        #WpEntityCountsService().get(wid)
         print wid
         return 1
     except:
