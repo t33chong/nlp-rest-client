@@ -2,11 +2,11 @@ import sys
 import traceback
 import os
 from boto import connect_s3
-from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService
+from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService, WpTopEntitiesService, WpEntityCountsService
 from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-useCaching() # reuse everything for now, right?
+useCaching(perServiceCaching={'TopEntitiesService.get': {'write_only': True}, 'EntityDocumentCountsService.get' : {'write_only': True}, 'TopHeadsService.get': {'write_only': True}, 'WikiEntitiesService.get': {'write_only': True}})
 
 
 def callServices(wid):
@@ -14,6 +14,8 @@ def callServices(wid):
         TopEntitiesService().get(wid)
         EntityDocumentCountsService().get(wid)
         TopHeadsService().get(wid)
+        #WpTopEntitiesService().get(wid)
+        #WpEntityCountsService().get(wid)
         print wid
         return 1
     except:

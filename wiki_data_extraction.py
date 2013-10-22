@@ -8,11 +8,11 @@ from boto.s3.prefix import Prefix
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
-warmOnly = True
+warmOnly = False
 while True:
     print "Getting wids"
-    wids = [str(int(line)) for line in open('bustedtopwams.txt').readlines()]
     #wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
+    wids = [str(int(id)) for id in open('wamslice.txt').readlines()]
     print "Working on %d wids" % len(wids)
     # shuffled to improve coverage across a pool
     random.shuffle(wids)
@@ -20,6 +20,7 @@ while True:
     
     while len(wids) > 0:
         while len(processes) < 8 and len(wids) > 0:
+            print 1000 - len(wids), '/ 1000'
             popen_params = ['/usr/bin/python', 'wiki_data_extraction_child.py', wids.pop()]
             if warmOnly:
                 popen_params += ['1']

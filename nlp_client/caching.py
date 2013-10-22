@@ -116,10 +116,17 @@ def cachedServiceRequest(getMethod):
                 response = getMethod(self, *args, **kw)
                 if response['status'] == 200 and not per_service_caching().get(service, {}).get('read_only', read_only()):
                     key = b.new_key(key_name=path)
-                    key.set_contents_from_string(json.dumps(response))
+                    key.set_contents_from_string(json.dumps(response, ensure_ascii=False))
 
             else:
-                response = json.loads(result.get_contents_as_string())
+                try:
+                    response = json.loads(result.get_contents_as_string())
+                except:
+                    response = getMethod(self, *args, **kw)
+                    if response['status'] == 200 and not per_service_caching().get(service, {}).get('read_only', read_only()):
+                        key = b.new_key(key_name=path)
+                        key.set_contents_from_string(json.dumps(response, ensure_ascii=False))
+                    
 
         return response
     return invoke
