@@ -91,7 +91,7 @@ def preprocess(title):
     """ Mutate each title to the appropriate pre-processed value
     :param row: cursor title
     """
-    return re.sub(' \(\w+\)', '', title.lower().replace('_', ' ')) #todo fix unicode shit
+    return re.sub(' \(\w+\)', '', title.lower().replace('_', ' '))[:500] #500 chars should be plenty, todo fix unicode shit
 
 def get_wp_key_for_title(title):
     return 'wikipedia_titles/'+quote_plus(preprocess(title)[:4])+'.gz'
@@ -133,7 +133,7 @@ def check_wp_s3(title):
     """
     global WP_SEEN, ALL_WP
     if len(ALL_WP) == {}:
-        ALL_WP = json.loads(connect_s3().get_bucket('nlp-data').get_key('wikipedia_titles/trie.json'), ensure_ascii=False)
+        ALL_WP = make_trie([preprocess(i.strip()) for i in gzip.open('/home/ubuntu/enwiki-20131001-all-titles-in-ns0.gz').readlines()])
     return in_trie(ALL_WP, preprocess(title))
     """
     try:

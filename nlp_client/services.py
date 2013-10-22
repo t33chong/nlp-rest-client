@@ -561,7 +561,7 @@ class WpWikiEntitiesService(RestfulResource):
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
-            print '(%s/%s)' % (counter,total)
+            #print '(%s/%s)' % (counter,total)
             counter += 1
 
         counts_to_entities = {}
@@ -591,6 +591,41 @@ class EntityDocumentCountsService(RestfulResource):
 
         entities_to_count = {}
         entity_service = EntityCountsService()
+
+        counter = 1
+        page_doc_ids = page_doc_response.get(wiki_id, [])
+        total = len(page_doc_ids)
+        for page_doc_id in page_doc_ids:
+            entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
+            map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + 1) , entities_with_count)
+            counter += 1
+
+        counts_to_entities = {}
+        for entity in entities_to_count.keys():
+            cnt = entities_to_count[entity]
+            counts_to_entities[cnt] = counts_to_entities.get(cnt, []) + [entity]
+
+        return {wiki_id:counts_to_entities, 'status':200}
+
+class WpEntityDocumentCountsService(RestfulResource):
+    
+    ''' Counts the number of documents each wikipedia entity appears in '''
+    ''' Aggregates entities over a wiki '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+
+        ''' Given a wiki doc id, iterates over all documents available.
+        For each noun phrase, we confirm whether there is a matching wp title.
+        We then cross-reference that noun phrase by document count, not mention count
+        :param wiki_id: the id of the wiki
+        '''
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entities_to_count = {}
+        entity_service = WpEntityCountsService()
 
         counter = 1
         page_doc_ids = page_doc_response.get(wiki_id, [])

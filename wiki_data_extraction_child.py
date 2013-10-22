@@ -2,7 +2,7 @@ import sys
 import traceback
 import os
 from boto import connect_s3
-from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService
+from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService, WpTopEntitiesService, WpEntityCountsService
 from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
@@ -14,6 +14,8 @@ def callServices(wid):
         TopEntitiesService().get(wid)
         EntityDocumentCountsService().get(wid)
         TopHeadsService().get(wid)
+        WpTopEntitiesService().get(wid)
+        WpEntityCountsService().get(wid)
         print wid
         return 1
     except:
