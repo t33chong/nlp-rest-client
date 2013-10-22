@@ -14,6 +14,7 @@ CACHE_BUCKET = None
 
 WRITE_ONLY = False
 READ_ONLY = False
+DONT_COMPUTE = False
 PER_SERVICE_CACHING = {}
 
 def bucket(new_bucket = None):
@@ -46,10 +47,19 @@ def write_only(mutate = None):
         WRITE_ONLY = mutate
     return WRITE_ONLY
 
+def dont_compute(mutate = None):
+    ''' With read only, will prevent calling method
+    :param mutate: a boolean val
+    '''
+    global DONT_COMPUTE
+    if mutate is not None:
+        DONT_COMPUTE = mutate
+    return DONT_COMPUTE
+
 def per_service_caching(services=None):
     ''' Store a dict of per-service cache options.
     :param services: a dict of the following structure:
-                     { service_name : { 'read_only': True, 'write_only': False } }
+                     { service_name : { 'read_only': True, 'write_only': False, 'dont_compute': False } }
                      -- if these values aren't set, the default is the globally set value
     '''
     global PER_SERVICE_CACHING
@@ -58,7 +68,7 @@ def per_service_caching(services=None):
     return PER_SERVICE_CACHING
 
 
-def useCaching(writeOnly = False, readOnly = False, perServiceCaching={}):
+def useCaching(writeOnly = False, readOnly = False, dontCompute=False, perServiceCaching={}):
     ''' Invoke this to set CACHE_BUCKET and enable caching on these services 
     :param write_only: whether we should avoid reading from the cache
     :param read_only: whether we should avoid writing to the cache
@@ -67,6 +77,7 @@ def useCaching(writeOnly = False, readOnly = False, perServiceCaching={}):
     bucket(connect_s3().get_bucket('nlp-data'))
     read_only(readOnly)
     write_only(writeOnly)
+    dont_compute(dontCompute)
     per_service_caching(perServiceCaching)
 
 
@@ -112,12 +123,13 @@ def cachedServiceRequest(getMethod):
             if not per_service_caching().get(service, {}).get('write_only', write_only()):
                 result = b.get_key(path)
 
-            if result is None:
+            if result is None and not per_service_caching().get(service, {}).get('dont_compute', dont_compute()):
                 response = getMethod(self, *args, **kw)
                 if response['status'] == 200 and not per_service_caching().get(service, {}).get('read_only', read_only()):
                     key = b.new_key(key_name=path)
                     key.set_contents_from_string(json.dumps(response, ensure_ascii=False))
-
+            elif result is None and per_service_caching().get(service, {}).get('dont_compute', dont_compute()):
+                return {'status':404, doc_id: {}}
             else:
                 try:
                     response = json.loads(result.get_contents_as_string())

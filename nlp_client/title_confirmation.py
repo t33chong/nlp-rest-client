@@ -8,6 +8,8 @@ from optparse import OptionParser
 from gzip import GzipFile, open as gzopen
 from StringIO import StringIO
 from urllib import quote_plus
+from nltk.corpus import stopwords
+import os
 import sys
 import zlib
 import phpserialize
@@ -91,7 +93,8 @@ def preprocess(title):
     """ Mutate each title to the appropriate pre-processed value
     :param row: cursor title
     """
-    return re.sub(' \(\w+\)', '', title.lower().replace('_', ' '))[:500] #500 chars should be plenty, todo fix unicode shit
+    stops = stopwords.words('english')
+    return ' '.join(filter(lambda x: x not in stops, re.sub(' \(\w+\)', '', title.lower().replace('_', ' ')).split(' ')))[:500] #500 chars should be plenty, todo fix unicode shit
 
 def get_wp_key_for_title(title):
     return 'wikipedia_titles/'+quote_plus(preprocess(title)[:4])+'.gz'
@@ -102,7 +105,8 @@ def check_wp(title):
     :param title: string
     """
     global WP_SEEN
-    return title in WP_SEEN or check_wp_s3(title)
+    bool = preprocess(title) in WP_SEEN or check_wp_s3(title)
+    return bool 
 
 _end = '_end_'
 def make_trie(*words):
@@ -131,22 +135,24 @@ def check_wp_s3(title):
     """ Checks if a "title" is a title in wikipedia using s3
     :param title: string
     """
+    """
     global WP_SEEN, ALL_WP
-    if len(ALL_WP) == {}:
-        ALL_WP = make_trie([preprocess(i.strip()) for i in gzip.open('/home/ubuntu/enwiki-20131001-all-titles-in-ns0.gz').readlines()])
+    if ALL_WP == {}:
+        ALL_WP = make_trie([preprocess(i.strip()) for i in gzopen('/'.join(os.path.realpath(__file__).split('/')[:-1])+'/enwiki-20131001-all-titles-in-ns0.gz').readlines()])
     return in_trie(ALL_WP, preprocess(title))
     """
+    global WP_SEEN
     try:
         key = connect_s3().get_bucket('nlp-data').get_key(get_wp_key_for_title(title))
-        if key is not None and title in zlib.decompress(key.get_contents_as_string(), 16+zlib.MAX_WBITS).split("\n"):
-            WP_SEEN += [title]
-            return True
+        if key is not None:
+            WP_SEEN += zlib.decompress(key.get_contents_as_string(), 16+zlib.MAX_WBITS).split("\n")
+            return preprocess(title) in WP_SEEN
         return False
     except KeyboardInterrupt:
         sys.exit()
-    except:
+    except Exception as e:
+        print e.message
         return False
-    """
 
 @app.route("/", methods=['POST'])
 def is_title_legit():
@@ -156,7 +162,6 @@ def is_title_legit():
     """
     global TITLES, REDIRECTS
     titles = request.json.get('titles', [])
-    print titles, map(preprocess, titles)
     resp = {}
     checked_titles = map(lambda x: (x, x in TITLES), map(preprocess, titles))
     resp['titles'] = dict(checked_titles)

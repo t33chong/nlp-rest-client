@@ -370,7 +370,7 @@ class WpEntitiesService(RestfulResource):
         :param doc_id: the id of the document
         """
         nps = AllNounPhrasesService().get(doc_id).get(doc_id, [])
-        nps_filtered = filter(title_confirmation.check_wp, list(set(nps)))
+        nps_filtered = filter(lambda x: len(x.strip()) > 0,  filter(title_confirmation.check_wp, filter(lambda x: len(x.split(' ')) <= 5,  list(set(nps)))))
         return {'status':200, doc_id: [np for np in nps if np in nps_filtered] }
 
 class EntitiesService(RestfulResource):
@@ -432,8 +432,8 @@ class EntityCountsService(RestfulResource):
                     counts[canonical] = len(filter(lambda x: canonical in x[1], paraphrases.items())[0][1])
                 elif canonical != val and val in coref_mention_values:
                     counts[canonical] = len(filter(lambda x: val in x[1], paraphrases.items())[0][1])
-            except:
-                pass
+            except Exception as e:
+                print e.message
 
         return {doc_id: counts, 'status': 200}
 
@@ -460,7 +460,7 @@ class WpEntityCountsService(RestfulResource):
 
         for val in map(title_confirmation.preprocess, entities):
             try:
-                canonical = entitiesresponse['redirects'].get(val, val)
+                canonical = val
                 if canonical in coref_mention_keys:
                     counts[canonical] = len(paraphrases[canonical])
                 elif canonical != val and val in coref_mention_keys:
@@ -535,6 +535,47 @@ class WikiEntitiesService(RestfulResource):
 
         return {wiki_id:counts_to_entities, 'status':200}
 
+class WikiPageEntitiesService(RestfulResource):
+
+    ''' Aggregates entities over a wiki '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+
+        ''' Given a wiki doc id, iterates over all documents available.
+        For each noun phrase, we confirm whether there is a matching title.
+        We then cross-reference that noun phrase by mention count. 
+        :param wiki_id: the id of the wiki
+        '''
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entity_service = EntityCountsService()
+
+        return {'status': 200, wiki_id: dict([(page_doc_id, entity_service.nestedGet(page_doc_id)) for page_doc_id in page_doc_response.get(wiki_id, [])])}
+
+
+class WpWikiPageEntitiesService(RestfulResource):
+
+    ''' Aggregates wp entities over a wiki '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+
+        ''' Given a wiki doc id, iterates over all documents available.
+        For each noun phrase, we confirm whether there is a matching wp title.
+        We then cross-reference that noun phrase by mention count. 
+        :param wiki_id: the id of the wiki
+        '''
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entity_service = WpEntityCountsService()
+
+        return {'status': 200, wiki_id: dict([(page_doc_id, entity_service.nestedGet(page_doc_id)) for page_doc_id in page_doc_response.get(wiki_id, [])])}
+
 
 class WpWikiEntitiesService(RestfulResource):
     ''' Entities service, but for Wikipedia '''
@@ -561,7 +602,7 @@ class WpWikiEntitiesService(RestfulResource):
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
-            #print '(%s/%s)' % (counter,total)
+            print '(%s/%s)' % (counter,total)
             counter += 1
 
         counts_to_entities = {}
@@ -642,7 +683,6 @@ class WpEntityDocumentCountsService(RestfulResource):
 
         return {wiki_id:counts_to_entities, 'status':200}
             
-
 
 class ListDocIdsService(RestfulResource):
     
