@@ -9,23 +9,30 @@ from nlp_client.services import WikiPageEntitiesService, WikiEntitiesService, Wp
 from nlp_client.caching import useCaching
 import sys
 import requests
+from multiprocessing import Pool
+from boto import connect_s3
+from tempfile import NamedTemporaryFile
 
 topN = sys.argv[1]
 
 num_topics = int(sys.argv[2])
 
-useCaching(perServiceCaching={'TopEntitiesService.get': {'dont_compute':True}, 'HeadsCountService.get': {'dont_compute':True}})
-
 wids = [str(int(line)) for line in open('topwams.txt').readlines()][:int(topN)]
 
 
-def vec2dense(vec, num_terms):
+def getData(wid):
+    useCaching(perServiceCaching={'TopEntitiesService.get': {'dont_compute':True}, 'HeadsCountService.get': {'dont_compute':True}})
+    return [(wid, [HeadsCountService().nestedGet(wid), TopEntitiesService().nestedGet(wid)])]
 
+def vec2dense(vec, num_terms):
     '''Convert from sparse gensim format to dense list of numbers'''
     return list(gensim.matutils.corpus2dense([vec], num_terms=num_terms).T[0])
 
+print "Loading entities and heads..."
 entities = []
-entities = dict([(wid, [HeadsCountService().nestedGet(wid), TopEntitiesService().nestedGet(wid)]) for wid in wids])
+for result in Pool(processes=8).map(getData, wids):
+    entities += result
+entities = dict(entities)
 
 widToEntityList = {}
 for wid in entities:
@@ -37,7 +44,7 @@ for wid in entities:
 
 print len(widToEntityList)
 
-print "Extracting..."
+print "Extracting to dictionary..."
 
 dct = gensim.corpora.Dictionary(widToEntityList.values())
 unfiltered = dct.token2id.keys()
@@ -62,29 +69,41 @@ for name in widToEntityList:
 print "\n---LDA Model---"
 lda_docs = {}
 
-lda_model = gensim.models.LdaModel(bow_docs.values(),
-                                   num_topics=num_topics,
-                                   id2word=dict([(x[1], x[0]) for x in dct.token2id.items()]))
+modelname = 'lda-%swikis-%stopics.model' % (sys.argv[1], sys.argv[2])
 
-print lda_model
-print lda_model.print_topics(num_topics)
-lda_model.save('lda-%swikis-%stopics.model' % (sys.argv[1], sys.argv[2]))
-sys.exit()
-for name in widToEntityList:
-    vec = bow_docs[name]
-    sparse = lda_model[vec]
-    dense = vec2dense(sparse, num_topics)
-    lda_docs[name] = sparse
-    #print name, ':', dense
-    
+key = connect_s3().get_bucket('nlp-data').get_key('models/'+modelname)
+if os.path.exists(os.getcwd()+'/'+modelname):
+    print "(loading from file)"
+    lda_model = gensim.models.LdaModel.load(os.getcwd()+'/'+modelname)
+else:
+    print os.getcwd()+'/'+modelname, "does not exist"
+    if key is not None:
+        print "(loading from s3)"
+        with open('/tmp/modelname', 'w') as fl:
+            key.get_contents_to_file(fl)
+        lda_model = gensim.models.LdaModel.load('/tmp/modelname')
+    else:
+        print "(building...)"
+        lda_model = gensim.models.LdaModel(bow_docs.values(),
+                                           num_topics=num_topics,
+                                           id2word=dict([(x[1], x[0]) for x in dct.token2id.items()]))
+        print "Done, saving model."
+        lda_model.save(modelname)
 
-print "\n---Unit Vectorization---"
- 
-unit_vecs = {}
-for name in widToEntityList:
-    vec = vec2dense(lda_docs[name], num_topics)
-    norm = sqrt(sum(num ** 2 for num in vec))
-    unit_vec = [num / norm for num in vec]
-    unit_vecs[name] = unit_vec
-    #print name, ':', unit_vec
+print "Writing topics to files"
+with open('%swiki-%stopics-sparse-topics.csv' % (sys.argv[1], sys.argv[2]), 'w') as sparse_csv:
+    with open('%swiki-%stopics-dense-topics.csv' % (sys.argv[1], sys.argv[2]), 'w') as dense_csv:
+        for name in widToEntityList:
+            vec = bow_docs[name]
+            sparse = lda_model[vec]
+            dense = vec2dense(sparse, num_topics)
+            lda_docs[name] = sparse
+            sparse_csv.write(",".join([str(wid)]+['%d-%.8f' % x for x in sparse])+"\n")
+            dense_csv.write(",".join([wid]+['%.8f' % x for x in list(dense)])+"\n")
 
+print "Done"
+
+if key is None:
+    print "uploading model to s3"
+    key = Key(connect_s3().get_bucket('nlp_data'))
+    key.set_contents_from_file(modelname)

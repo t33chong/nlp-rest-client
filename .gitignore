@@ -6,3 +6,5 @@ nlp_client/enwiki-20131001-all-titles-in-ns0.gz
 WikiaSolr/*
 *.log
 *.db
+*.csv
+*.model
