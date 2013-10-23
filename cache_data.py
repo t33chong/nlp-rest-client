@@ -64,6 +64,8 @@ def call_services(keyname):
                     print 'Could not call %s on %s!' % (service, doc_id)
         except AttributeError:
             print 'Unexpected format: %s:' % (filename)
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            print "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         except KeyboardInterrupt:
             sys.exit()
 
@@ -77,5 +79,5 @@ def call_services(keyname):
 pool = Pool(processes=workers)
 
 while True:
-    pool.map(call_services, [key.name for key in BUCKET.list(prefix='data_events/')])
-    sleep(30)
+    pool.map(call_services, [key.name for key in BUCKET.list(prefix='data_events/') if key.name.endswith('gz')])
+    time.sleep(30)

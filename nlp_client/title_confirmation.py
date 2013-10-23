@@ -38,7 +38,7 @@ def get_local_db_from_options(options, global_db):
         where = 'city_dbname = "%s"' % options.db
     else:
         raise ValueError("Need a db, id, or host.")
-    
+
     cursor = global_db.cursor()
     sql = "SELECT city_id, city_dbname FROM city_list WHERE %s" % where
     results = cursor.execute(sql)
@@ -180,7 +180,7 @@ def get_titles_for_wiki_id(wiki_id):
         io = StringIO()
         key.get_file(io)
         io.seek(0)
-        stringdata = GzipFile(fileobj=io, mode='r').read()
+        stringdata = GzipFile(fileobj=io, mode='r').read().decode('ISO-8859-2').encode('utf-8')
         TITLES = json.loads(stringdata)[wiki_id]
     else:
         local_db = get_local_db_from_wiki_id(get_global_db(), wiki_id)
