@@ -1,4 +1,3 @@
-
 from flask import Flask, request
 try:
     from wikicities.DB import LoadBalancer
@@ -192,7 +191,13 @@ def get_sqlite_connection():
     return SQLITE_CONNECTION
 
 def bootstrap_sqlite_connection():
+    if not os.path.exists(os.getcwd()+'/wp_titles.db'):
+        print 'downloading'
+        key = connect_s3().get_bucket('nlp-data').get_key('wp_titles.db')
+        if key is not None:
+            key.get_contents_to_filename(os.getcwd()+'wp_titles.db')
     conn = lite.connect('wp_titles.db')
+    conn.text_factory = str
     cursor = conn.cursor()
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='titles'")
     if cursor.fetchone() is None:
@@ -204,18 +209,14 @@ def create_wp_table(conn):
     cur = conn.cursor()
     cur.execute('''CREATE TABLE IF NOT EXISTS `titles`
                     (title TEXT UNIQUE);''')
-    lines = []
+
+    print "Extracting/Inserting..."
     counter = 0
-    for line in  gzopen('/'.join(os.path.realpath(__file__).split('/')[:-1])+'/enwiki-20131001-all-titles-in-ns0.gz'):
-        lines += [line]
+    for line in list(set(map(lambda x: preprocess(x.strip()), gzopen('/'.join(os.path.realpath(__file__).split('/')[:-1])+'/enwiki-20131001-all-titles-in-ns0.gz')))):
+        cur.execute("INSERT INTO `titles` (`title`) VALUES (?)", (line,))
         counter += 1
-        if counter == 500:
-            break
-    for title in list(set(map(lambda x: preprocess(x.strip()), lines))):
-        try:
-            sql = u"INSERT INTO `titles` (`title`) VALUES (\"%s\")" % (title.replace('"', '""'))
-            cur.execute(sql)
-        except Exception as e:
-            print e, sql
+        if counter % 500 == 0:
+            print counter
+
     print "Committing..."
     conn.commit()
