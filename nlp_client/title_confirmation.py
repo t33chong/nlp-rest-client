@@ -97,10 +97,6 @@ def preprocess(title):
     stops = stopwords.words('english')
     return ' '.join(filter(lambda x: x not in stops, re.sub(' \(\w+\)', '', title.lower().replace('_', ' ')).split(' ')))[:500] #500 chars should be plenty, todo fix unicode shit
 
-def get_wp_key_for_title(title):
-    return 'wikipedia_titles/'+quote_plus(preprocess(title)[:4])+'.gz'
-
-
 def check_wp(title):
     """ Checks if a "title" is a title in wikipedia first using memoization cache, then check_wp_s3
     :param title: string
@@ -110,23 +106,6 @@ def check_wp(title):
     bool = ppt in WP_SEEN or check_wp_sqlite(ppt)
     return bool 
 
-
-def check_wp_s3(title):
-    """ Checks if a "title" is a title in wikipedia using s3
-    :param title: string
-    """
-    global WP_SEEN
-    try:
-        key = connect_s3().get_bucket('nlp-data').get_key(get_wp_key_for_title(title))
-        if key is not None:
-            WP_SEEN += zlib.decompress(key.get_contents_as_string(), 16+zlib.MAX_WBITS).split("\n")
-            return preprocess(title) in WP_SEEN
-        return False
-    except KeyboardInterrupt:
-        sys.exit()
-    except Exception as e:
-        print e.message
-        return False
 
 def check_wp_sqlite(title):
     global WP_SEEN
