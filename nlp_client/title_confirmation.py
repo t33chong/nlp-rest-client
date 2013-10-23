@@ -1,3 +1,4 @@
+
 from flask import Flask, request
 try:
     from wikicities.DB import LoadBalancer
@@ -16,9 +17,10 @@ import phpserialize
 import re
 import json
 import time
+import sqlite3 as lite
 
 """ Memoization variables """
-TITLES, REDIRECTS, CURRENT_WIKI_ID, USE_S3, WP_SEEN, ALL_WP = [], {}, None, True, [], {}
+TITLES, REDIRECTS, CURRENT_WIKI_ID, USE_S3, WP_SEEN, ALL_WP, SQLITE_CONNECTION = [], {}, None, True, [], {}, None
 
 yml = '/usr/wikia/conf/current/DB.yml'
 app = Flask(__name__)
@@ -105,41 +107,14 @@ def check_wp(title):
     :param title: string
     """
     global WP_SEEN
-    bool = preprocess(title) in WP_SEEN or check_wp_s3(title)
+    ppt = preprocess(title)
+    bool = ppt in WP_SEEN or check_wp_sqlite(ppt)
     return bool 
 
-_end = '_end_'
-def make_trie(*words):
-     root = dict()
-     for word in words:
-         current_dict = root
-         for letter in word:
-             current_dict = current_dict.setdefault(letter, {})
-         current_dict = current_dict.setdefault(_end, _end)
-     return root
-
-def in_trie(trie, word):
-     current_dict = trie
-     for letter in word:
-         if letter in current_dict:
-             current_dict = current_dict[letter]
-         else:
-             return False
-     else:
-         if _end in current_dict:
-             return True
-         else:
-             return False
 
 def check_wp_s3(title):
     """ Checks if a "title" is a title in wikipedia using s3
     :param title: string
-    """
-    """
-    global WP_SEEN, ALL_WP
-    if ALL_WP == {}:
-        ALL_WP = make_trie([preprocess(i.strip()) for i in gzopen('/'.join(os.path.realpath(__file__).split('/')[:-1])+'/enwiki-20131001-all-titles-in-ns0.gz').readlines()])
-    return in_trie(ALL_WP, preprocess(title))
     """
     global WP_SEEN
     try:
@@ -154,20 +129,16 @@ def check_wp_s3(title):
         print e.message
         return False
 
-@app.route("/", methods=['POST'])
-def is_title_legit():
-    """
-    Checks if POSTed titles are legit, and gives redirects
-    TODO: use bloom filter!?
-    """
-    global TITLES, REDIRECTS
-    titles = request.json.get('titles', [])
-    resp = {}
-    checked_titles = map(lambda x: (x, x in TITLES), map(preprocess, titles))
-    resp['titles'] = dict(checked_titles)
-    redirectkeys = REDIRECTS.keys()
-    resp['redirects'] = dict(map(lambda x: (x[0], REDIRECTS[x[0]]), filter(lambda x: x[0] in redirectkeys and x[1], checked_titles)))
-    return json.dumps(resp)
+def check_wp_sqlite(title):
+    global WP_SEEN
+    conn = get_sqlite_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM `titles` where `title` = \"%s\"" % (title.replace('"', '""')))
+    if cursor.fetchone() is not None:
+        WP_SEEN += [title]
+        return True
+    return False
+
 
 def get_titles_for_wiki_id(wiki_id):
     global TITLES, CURRENT_WIKI_ID, USE_S3
@@ -200,7 +171,7 @@ def get_redirects_for_wiki_id(wiki_id):
     if USE_S3:
         bucket = connect_s3().get_bucket('nlp-data')
         key = bucket.get_key('article_redirects/%s.gz' % str(wiki_id))
-        io = StringIO()
+        Io = StringIO()
         key.get_file(io)
         io.seek(0)
         stringdata = GzipFile(fileobj=io, mode='r').read()
@@ -214,30 +185,37 @@ def get_redirects_for_wiki_id(wiki_id):
     CURRENT_WIKI_ID = wiki_id
     return REDIRECTS
 
-def main(app):
-    global TITLES, REDIRECTS
-    start = time.time()
-    print "Starting title server..."
+def get_sqlite_connection():
+    global SQLITE_CONNECTION
+    if SQLITE_CONNECTION is None:
+        SQLITE_CONNECTION = bootstrap_sqlite_connection()
+    return SQLITE_CONNECTION
 
-    options = define_options()
-    lb = LoadBalancer(options.dbconfig)
-    global_db = lb.get_db_by_name('wikicities')
-    (wiki_id, dbname) = get_local_db_from_options(options, global_db)
-    local_db = lb.get_db_by_name(dbname)
+def bootstrap_sqlite_connection():
+    conn = lite.connect('wp_titles.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='titles'")
+    if cursor.fetchone() is None:
+        create_wp_table(conn)
+    return conn
 
-    # store flat, unique dictionary
-    cursor = local_db.cursor()
-    cursor.execute("SELECT page_title FROM page WHERE page_namespace IN (%s)" % ", ".join(map(str, get_namespaces(global_db, wiki_id))))
-    TITLES = set(map(lambda x: preprocess(x[0]), cursor))
-
-    # relate preprocessed redirect title to canonical title
-    cursor = local_db.cursor()
-    cursor.execute("SELECT page_title, rd_title FROM redirect INNER JOIN page ON page_id = rd_from")
-    REDIRECTS = dict([map(preprocess, row) for row in cursor])
-
-    print "Title server ready in %s seconds" % str(time.time() - start)
-    app.run(debug=True, host='0.0.0.0', port=5001)
-
-
-if __name__ == '__main__':
-    main(app)
+def create_wp_table(conn):
+    print 'creating'
+    cur = conn.cursor()
+    cur.execute('''CREATE TABLE IF NOT EXISTS `titles`
+                    (title TEXT UNIQUE);''')
+    lines = []
+    counter = 0
+    for line in  gzopen('/'.join(os.path.realpath(__file__).split('/')[:-1])+'/enwiki-20131001-all-titles-in-ns0.gz'):
+        lines += [line]
+        counter += 1
+        if counter == 500:
+            break
+    for title in list(set(map(lambda x: preprocess(x.strip()), lines))):
+        try:
+            sql = u"INSERT INTO `titles` (`title`) VALUES (\"%s\")" % (title.replace('"', '""'))
+            cur.execute(sql)
+        except Exception as e:
+            print e, sql
+    print "Committing..."
+    conn.commit()
