@@ -19,7 +19,7 @@ try:
     WpTopEntitiesService().get(wid)
     del psc['WpEntityCountsService.get']
     useCaching(perServiceCaching=psc)
-    print WpEntityDocumentCountsService().get(wid)
+    WpEntityDocumentCountsService().get(wid)
     print wid
 except:
     print "Problem with", wid

@@ -20,7 +20,6 @@ while True:
     
     while len(wids) > 0:
         while len(processes) < 8 and len(wids) > 0:
-            print 1000 - len(wids), '/ 1000'
             popen_params = ['/usr/bin/python', 'wiki_data_extraction_child.py', wids.pop()]
             if warmOnly:
                 popen_params += ['1']
