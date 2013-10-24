@@ -12,7 +12,7 @@ warmOnly = False
 while True:
     print "Getting wids"
     #wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
-    wids = [str(int(id)) for id in open('wamslice.txt').readlines()]
+    wids = [str(int(id)) for id in open('topwams.txt')]
     print "Working on %d wids" % len(wids)
     # shuffled to improve coverage across a pool
     random.shuffle(wids)

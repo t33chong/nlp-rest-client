@@ -446,6 +446,7 @@ class WpEntityCountsService(RestfulResource):
         ''' Given a doc id, accesses wp entities and then cross-references entity parses 
         :param doc_id: the id of the article
         '''
+
         entities = WpEntitiesService().nestedGet(doc_id)
         coreferences = CoreferenceCountsService().get(doc_id).get(doc_id, {})
         
@@ -602,7 +603,7 @@ class WpWikiEntitiesService(RestfulResource):
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
-            print '(%s/%s)' % (counter,total)
+            #print '(%s/%s)' % (counter,total)
             counter += 1
 
         counts_to_entities = {}

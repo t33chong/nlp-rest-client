@@ -193,6 +193,9 @@ def get_sqlite_connection():
 def bootstrap_sqlite_connection():
     if not os.path.exists(os.getcwd()+'/wp_titles.db'):
         print 'downloading'
+        """
+        THIS ISN'T WORKING RIGHT NOW! i think there's a problem with how it's stored in S3. For now, AMIs and shit.
+        """
         key = connect_s3().get_bucket('nlp-data').get_key('wp_titles.db')
         if key is not None:
             key.get_contents_to_filename(os.getcwd()+'wp_titles.db')
@@ -201,7 +204,8 @@ def bootstrap_sqlite_connection():
     cursor = conn.cursor()
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='titles'")
     if cursor.fetchone() is None:
-        create_wp_table(conn)
+        pass
+        #create_wp_table(conn)
     return conn
 
 def create_wp_table(conn):
