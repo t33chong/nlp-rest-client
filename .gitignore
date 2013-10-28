@@ -8,3 +8,4 @@ WikiaSolr/*
 *.db
 *.csv
 *.model
+.idea/*
