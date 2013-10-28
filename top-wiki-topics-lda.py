@@ -32,6 +32,7 @@ print "Loading entities and heads..."
 entities = []
 for result in Pool(processes=8).map(getData, wids):
     entities += result
+
 entities = dict(entities)
 
 widToEntityList = {}
@@ -42,7 +43,8 @@ for wid in entities:
     for entity in entities[wid][1]:
         widToEntityList[wid] += [entity[0]] * int(entity[1])
 
-print len(widToEntityList)
+print len(widToEntityList), "wikis"
+print len(set([value for values in widToEntityList.values() for value in values])), "features"
 
 print "Extracting to dictionary..."
 
@@ -98,8 +100,8 @@ with open('%swiki-%stopics-sparse-topics.csv' % (sys.argv[1], sys.argv[2]), 'w')
             sparse = lda_model[vec]
             dense = vec2dense(sparse, num_topics)
             lda_docs[name] = sparse
-            sparse_csv.write(",".join([str(wid)]+['%d-%.8f' % x for x in sparse])+"\n")
-            dense_csv.write(",".join([wid]+['%.8f' % x for x in list(dense)])+"\n")
+            sparse_csv.write(",".join([str(name)]+['%d-%.8f' % x for x in sparse])+"\n")
+            dense_csv.write(",".join([name]+['%.8f' % x for x in list(dense)])+"\n")
 
 print "Done"
 
