@@ -16,6 +16,7 @@ import requests
 import types
 import json
 import sys
+import numpy
 
 '''
 This module contains all services used in our RESTful client.
@@ -308,7 +309,7 @@ class SolrWikiService(RestfulResource):
         return serviceResponse
 
 
-class SentimentService(RestfulResource):
+class NaiveSentimentService(RestfulResource):
 
     ''' Read-only service that calculates the sentiment for a given piece of text
     Relies on SolrPageService
@@ -333,7 +334,71 @@ class SentimentService(RestfulResource):
         sentimentData['subjectivity_min'] = min(subjectivities)
         sentimentData['subjectivity_max_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_max'])])
         sentimentData['subjectivity_min_sent'] = str(blob.sentences[subjectivities.index(sentimentData['subjectivity_min'])])
-        return {doc_id: sentimentData, 'status':200}
+        return {doc_id: sentimentData, 'status': 200}
+
+class DocumentSentimentService(RestfulResource):
+
+    ''' Responsible for delivering sentiment information for a given document.
+    '''
+
+    @cachedServiceRequest
+    def get(self, doc_id):
+        '''
+        Provides average sentiment across the document, and sentiment scores for entities within each subject.
+        :return: dictionary with response data
+        :rtype:dict
+        '''
+        jsonResponse = ParsedJsonService().get(doc_id)
+        if jsonResponse.get('status', None) is not 200:
+            return jsonResponse
+
+        doc = jsonResponse.get(doc_id, {})
+
+        response = dict()
+        response['averageSentiment'] = doc.get('root', {}).get('document', {})\
+                                          .get('sentences', {}).get('@averageSentiment', 0)
+
+        docParaphrases = CoreferenceCountsService().nestedGet(doc_id, {}).get('paraphrases', {}).items()
+
+        val_to_canonical = dict(map(lambda x: map(title_confirmation.preprocess, x),
+                                [(key, key) for key in docParaphrases]
+                                + [(value, key) for key in docParaphrases for value in docParaphrases[key]]))
+
+        phrasesToSentiment = dict()
+
+        def traverse_tree_for_sentiment(sent, parse=None):
+            if parse is None:
+                parse = nltk.Tree.parse(sent.get('parse', ''))
+            flattened = parse.flatten()
+            if flattened in val_to_canonical:
+                phrasesToSentiment[flattened] = phrasesToSentiment.get(flattened, []) + [sent['@sentiment']]
+                return  # don't need to keep going
+            for i in range(0, len(parse)):
+                traverse_tree_for_sentiment(sent, parse)
+
+        sentences = doc.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', [])
+        map(traverse_tree_for_sentiment, sentences)
+
+        response['averagePhraseSentiment'] = dict([(x[0], numpy.mean(x[1])) for x in phrasesToSentiment.items()])
+
+        return {'status': 200, doc_id: response}
+
+
+class DocumentEntitySentimentService(RestfulResource):
+
+    ''' Filters out sentiment in a document to only care about entities '''
+    @cachedServiceRequest
+    def get(self, doc_id):
+        sentimentResponse = DocumentSentimentService().get(doc_id)
+        if sentimentResponse['status'] is not 200:
+            return sentimentResponse
+
+        entities = EntitiesService().nestedGet(doc_id, [])
+
+        response = {'status': 200,
+                    'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
+                                            sentimentResponse['averagePhraseSentiment'].items()))
+                    }
 
 
 class AllTitlesService(RestfulResource):
