@@ -400,6 +400,22 @@ class DocumentEntitySentimentService(RestfulResource):
                                             sentimentResponse['averagePhraseSentiment'].items()))
                     }
 
+class WpDocumentEntitySentimentService(RestfulResource):
+
+    ''' Filters out sentiment in a document to only care about entities '''
+    @cachedServiceRequest
+    def get(self, doc_id):
+        sentimentResponse = DocumentSentimentService().get(doc_id)
+        if sentimentResponse['status'] is not 200:
+            return sentimentResponse
+
+        entities = WpEntitiesService().nestedGet(doc_id, [])
+
+        response = {'status': 200,
+                    'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
+                                            sentimentResponse['averagePhraseSentiment'].items()))
+                    }
+
 
 class AllTitlesService(RestfulResource):
 

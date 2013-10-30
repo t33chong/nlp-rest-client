@@ -1,9 +1,9 @@
 {
     "services": [
-        "CoreferenceCountsService",
-        "AllNounPhrasesService",
         "AllVerbPhrasesService",
         "HeadsService",
-        "EntityCountsService"
+	"WpEntityCountsService",
+	"EntityCountsService",
+	"DocumentEntitySentimentService"
                 ]
 }
