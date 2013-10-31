@@ -4,6 +4,7 @@
         "HeadsService",
 	"WpEntityCountsService",
 	"EntityCountsService",
-	"DocumentEntitySentimentService"
+	"DocumentEntitySentimentService",
+	"WpDocumentEntitySentimentService"
                 ]
 }

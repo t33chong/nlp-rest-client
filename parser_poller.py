@@ -37,7 +37,7 @@ def add_files():
     global hostname, bucket, PACKAGE_DIR, SIG, inqueue, autoscale_group
     print "[%s] Adding to text queue" % hostname
 
-    keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events'))
+    keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events/'))
 
     # iterating over keys in case we try to grab a key that another instance scoops
     for key in keys:

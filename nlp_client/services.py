@@ -133,7 +133,6 @@ class ParsedJsonService(RestfulResource):
                 response = MEMOIZED_JSON[doc_id]
             except Exception as e:
                 return {'status': 500, 'message': str(e)}
-        
         return response
 
 
@@ -355,28 +354,56 @@ class DocumentSentimentService(RestfulResource):
         doc = jsonResponse.get(doc_id, {})
 
         response = dict()
-        response['averageSentiment'] = doc.get('root', {}).get('document', {})\
-                                          .get('sentences', {}).get('@averageSentiment', 0)
 
-        docParaphrases = CoreferenceCountsService().nestedGet(doc_id, {}).get('paraphrases', {}).items()
+        sentencesNode = doc.get('root', {}).get('document', {}).get('sentences', {})
+
+        if sentencesNode is None:
+            response['status'] = 500
+            response['message'] = 'No sentences in this parse.'
+            return response
+
+        response['averageSentiment'] = sentencesNode.get('averageSentiment')
+
+        if response['averageSentiment'] is None:
+            response['status'] = 500
+            response['message'] = 'Sentiment data missing from parse.'
+            return response
+
+        docParaphrases = CoreferenceCountsService().nestedGet(doc_id, {}).get('paraphrases', {})
 
         val_to_canonical = dict(map(lambda x: map(title_confirmation.preprocess, x),
                                 [(key, key) for key in docParaphrases]
                                 + [(value, key) for key in docParaphrases for value in docParaphrases[key]]))
 
+        if '' in val_to_canonical:
+            del val_to_canonical['']  # wat
+
         phrasesToSentiment = dict()
 
         def traverse_tree_for_sentiment(sent, parse=None):
-            if parse is None:
-                parse = nltk.Tree.parse(sent.get('parse', ''))
-            flattened = parse.flatten()
-            if flattened in val_to_canonical:
-                phrasesToSentiment[flattened] = phrasesToSentiment.get(flattened, []) + [sent['@sentiment']]
-                return  # don't need to keep going
-            for i in range(0, len(parse)):
-                traverse_tree_for_sentiment(sent, parse)
+            try:
+                if parse is None:
+                    sexpr = sent.get('sentence', {}).get('parse', '').decode('ISO-8859-2').encode('utf-8')
+                    if sexpr == '':
+                        return  # can't do anything with this junk
+                    parse = nltk.Tree.parse(sexpr)
 
-        sentences = doc.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', [])
+                flattened = str(parse.flatten()) if not isinstance(parse, basestring) else parse
+                if flattened in val_to_canonical:
+                    phrasesToSentiment[flattened] = phrasesToSentiment.get(flattened, []) + [int(sent['@sentiment'])]
+                    return  # don't need to keep going
+
+                if not isinstance(parse, basestring):
+                    for i in range(0, len(parse)):
+                        traverse_tree_for_sentiment(sent, parse[i])
+            except UnicodeEncodeError:
+                return  # gotta fix
+
+        sentences = doc.get('root', {}).get('document', {}).get('sentences', {}).get('sentence')
+        if isinstance(sentences, dict):
+            #singleton sentence
+            sentences = [sentences]
+
         map(traverse_tree_for_sentiment, sentences)
 
         response['averagePhraseSentiment'] = dict([(x[0], numpy.mean(x[1])) for x in phrasesToSentiment.items()])
@@ -390,15 +417,16 @@ class DocumentEntitySentimentService(RestfulResource):
     @cachedServiceRequest
     def get(self, doc_id):
         sentimentResponse = DocumentSentimentService().get(doc_id)
+
         if sentimentResponse['status'] is not 200:
             return sentimentResponse
 
         entities = EntitiesService().nestedGet(doc_id, [])
 
-        response = {'status': 200,
-                    'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
-                                            sentimentResponse['averagePhraseSentiment'].items()))
-                    }
+        return {'status': 200,
+                'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
+                                        sentimentResponse[doc_id]['averagePhraseSentiment'].items()))
+                }
 
 class WpDocumentEntitySentimentService(RestfulResource):
 
@@ -411,10 +439,10 @@ class WpDocumentEntitySentimentService(RestfulResource):
 
         entities = WpEntitiesService().nestedGet(doc_id, [])
 
-        response = {'status': 200,
-                    'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
-                                            sentimentResponse['averagePhraseSentiment'].items()))
-                    }
+        return {'status': 200,
+                'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
+                                        sentimentResponse[doc_id]['averagePhraseSentiment'].items()))
+                }
 
 
 class AllTitlesService(RestfulResource):
