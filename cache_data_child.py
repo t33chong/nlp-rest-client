@@ -47,7 +47,6 @@ def call_services(keyname):
         return
 
     eventfile = "data_processing/%s_%s_%s" % (boto.utils.get_instance_metadata()['local-hostname'], str(time.time()), str(int(random.randint(0, 100))))
-    print eventfile
     try:
         key.copy('nlp-data', eventfile)
         key.delete()
