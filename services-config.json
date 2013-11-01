@@ -6,5 +6,15 @@
 	"EntityCountsService",
 	"DocumentEntitySentimentService",
 	"WpDocumentEntitySentimentService"
-                ]
+                ],
+    "wiki-services": [
+        "TopEntitiesService", 
+	"EntityDocumentCountsService", 
+	"TopHeadsService", 
+	"WpTopEntitiesService", 
+	"WpEntityDocumentCountsService",
+	"WikiEntitySentimentService",
+	"WpWikiEntitySentimentService",
+	"AllEntitiesSentimentAndCountsService"
+    		]
 }

@@ -170,7 +170,7 @@ def get_redirects_for_wiki_id(wiki_id):
     if USE_S3:
         bucket = connect_s3().get_bucket('nlp-data')
         key = bucket.get_key('article_redirects/%s.gz' % str(wiki_id))
-        Io = StringIO()
+        io = StringIO()
         key.get_file(io)
         io.seek(0)
         stringdata = GzipFile(fileobj=io, mode='r').read()

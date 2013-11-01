@@ -1,26 +1,33 @@
 import sys
 import traceback
 import os
+import json
 from boto import connect_s3
-from nlp_client.services import TopEntitiesService, EntityDocumentCountsService, TopHeadsService, WpTopEntitiesService, WpEntityDocumentCountsService
+from nlp_client.services import *
 from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-psc = {'TopEntitiesService.get': {'write_only': True}, 'EntityDocumentCountsService.get' : {'write_only': True}, 'TopHeadsService.get': {'write_only': True}, 'WikiEntitiesService.get': {'write_only': True}, 'WpTopEntitiesService.get': {'write_only': True}, 'WpEntityCountsService.get': {'write_only':True}, 'WpEntitiesService.get': {'write_only':True}, 'WpWikiEntitiesService.get': {'write_only':True, 'WpEntityDocumentCountsService': {'write_only': True}}}
-useCaching(perServiceCaching=psc)
+
+service_file = sys.argv[2] if len(sys.argv) > 2 else 'services-config.json'
+SERVICES = json.loads(open(service_file).read())['wiki-services']
+
+caching_dict = dict([(service+'.get', {'write_only': True}) for service in SERVICES])
+caching_dict = {}
+useCaching(perServiceCaching=caching_dict)
 
 wid = sys.argv[1]
 try:
-    TopEntitiesService().get(wid)
-    del psc['EntityDocumentCountsService.get']
-    useCaching(perServiceCaching=psc)
-    EntityDocumentCountsService().get(wid)
-    TopHeadsService().get(wid)
-    WpTopEntitiesService().get(wid)
-    del psc['WpEntityCountsService.get']
-    useCaching(perServiceCaching=psc)
-    WpEntityDocumentCountsService().get(wid)
-    print wid
+    for service in SERVICES:
+        try:
+            print service
+            getattr(sys.modules[__name__], service)().get(wid)
+            caching_dict[service+'.get'] = {'dont_compute': True}  # DRY fool!
+            useCaching(caching_dict)
+        except KeyboardInterrupt:
+            sys.exit()
+        except Exception as e:
+            print 'Could not call %s on %s!' % (service, wid)
+            print traceback.format_exc()
 except:
     print "Problem with", wid
     exc_type, exc_value, exc_traceback = sys.exc_info()

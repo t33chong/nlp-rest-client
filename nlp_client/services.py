@@ -428,6 +428,47 @@ class DocumentEntitySentimentService(RestfulResource):
                                         sentimentResponse[doc_id]['averagePhraseSentiment'].items()))
                 }
 
+class WikiEntitySentimentService(RestfulResource):
+
+    ''' Does document entity sentiment service across all documents '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entitySentiment = {}
+        dss = DocumentSentimentService()
+        for doc_id in page_doc_response[wiki_id]:
+            sent_response = dss.getNested(wiki_id)
+            for key in sent_response:
+                entitySentiment[key] = entitySentiment.get(key, []) + sent_response[key]
+
+        return {'status': 200, wiki_id: dict([(key, numpy.mean(entitySentiment[key])) for key in entitySentiment])}
+
+
+class WpWikiEntitySentimentService(RestfulResource):
+
+    ''' Does document entity sentiment service across all documents '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        entitySentiment = {}
+        dss = WpDocumentSentimentService()
+        for doc_id in page_doc_response[wiki_id]:
+            sent_response = dss.getNested(wiki_id)
+            for key in sent_response:
+                entitySentiment[key] = entitySentiment.get(key, []) + sent_response[key]
+
+        return {'status': 200, wiki_id: dict([(key, numpy.mean(entitySentiment[key])) for key in entitySentiment])}
+
+        
+
 class WpDocumentEntitySentimentService(RestfulResource):
 
     ''' Filters out sentiment in a document to only care about entities '''
@@ -443,6 +484,29 @@ class WpDocumentEntitySentimentService(RestfulResource):
                 'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
                                         sentimentResponse[doc_id]['averagePhraseSentiment'].items()))
                 }
+
+class AllEntitiesSentimentAndCountsService(RestfulResource):
+
+    ''' Key is entity name, and then dict of count and sentiment so we can sort and what not '''
+    @cachedServiceRequest
+    def get(self, wiki_id):
+        counts = dict(
+            WpDocumentEntityCountsService().nestedGet(wiki_id).items() +
+            DocumentEntityCountsService().nestedGet(wiki_id).items()
+        )
+        sentiments = dict (
+            DocumentEntitySentimentService().nestedGet(wiki_id) +
+            WpDocumentEntitySentimentService().nestedGet(wiki_id)
+        )
+
+        resp_dict = {}
+        for s in sentiments:
+            resp_dict[s] = {'sentiment': sentiments[s] }
+
+        for c in counts:
+            respDict[c] = dict(resp_dict.get(c, {}).items() + ('count', counts[c]))
+        
+        return { 'status': 200, wiki_id: resp_dict }
 
 
 class AllTitlesService(RestfulResource):
@@ -635,7 +699,7 @@ class WikiEntitiesService(RestfulResource):
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
-            #print '(%s/%s)' % (counter,total)
+            print '(%s/%s)' % (counter,total)
             counter += 1
 
         counts_to_entities = {}
@@ -712,7 +776,7 @@ class WpWikiEntitiesService(RestfulResource):
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + x[1]) , entities_with_count)
-            #print '(%s/%s)' % (counter,total)
+            print '(%s/%s)' % (counter,total)
             counter += 1
 
         counts_to_entities = {}
