@@ -186,7 +186,7 @@ class PhraseService():
     ''' Not restful, allows us to abstract out what nodes we want from a tree parse '''
     
     @staticmethod
-    def get(doc_id, phrase_type):
+    def get(doc_id, phrase_types):
         jsonResponse = ParsedJsonService().get(doc_id)
         if jsonResponse['status'] != 200:
             return []
@@ -210,7 +210,7 @@ class AllNounPhrasesService(RestfulResource):
         ''' Get noun phrases for a document 
         :param doc_id: the id of the document in Solr
         '''
-        return {doc_id:PhraseService.get(doc_id, u'NP'), 'status':200}
+        return {doc_id:PhraseService.get(doc_id, [u'NP']), 'status':200}
 
 
 class AllVerbPhrasesService(RestfulResource):
@@ -222,7 +222,7 @@ class AllVerbPhrasesService(RestfulResource):
         ''' Get verb phrases for a document 
         :param doc_id: the id of the document in Solr
         '''
-        return {doc_id:PhraseService.get(doc_id, u'VP'), 'status':200}
+        return {doc_id:PhraseService.get(doc_id, [u'VP']), 'status':200}
 
 
 class HeadsService(RestfulResource):
