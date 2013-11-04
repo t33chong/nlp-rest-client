@@ -190,14 +190,15 @@ class PhraseService():
         jsonResponse = ParsedJsonService().get(doc_id)
         if jsonResponse['status'] != 200:
             return []
-        dict = jsonResponse[doc_id]
-        if not isEmptyDoc(dict):
-            return [' '.join(f.leaves()) \
-                        for sentence in asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', [])) \
-                        for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node == phrase_type \
-                        ]
-        return []
+        return PhraseService.phrases_from_json(jsonResponse[doc_id], asList(phrase_types))
 
+
+    @staticmethod
+    def phrases_from_json(json_parse), phrase_types:
+        return [' '.join(f.leaves())
+                for sentence in asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', []))
+                for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node in phrase_types
+                ] if not isEmptyDoc(json_parse) else []
 
 
 class AllNounPhrasesService(RestfulResource):
