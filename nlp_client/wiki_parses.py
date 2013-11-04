@@ -13,14 +13,18 @@ def field_for_wiki(wid, field, default=None):
     if not os.path.exists(path):
         return default
 
-    return open(path, 'r').read()
+    text = open(path, 'r').read()
+    if len(text) > 0:
+        return xmltodict.parse(text)
+
+    return default
 
 
 def phrases_for_wiki_field(wid, field):
     return PhraseService.phrases_from_json(field_for_wiki(wid, field, {}), NOUN_TAGS)
 
 
-def get_main_page_nps(wid):
+def main_page_nps(wid):
     response = requests.get('http://search-s10:8983/solr/main/select', 
                         params=dict(wt='json', q='wid:%s AND is_main_page:true' % wid, fl='id'))
 
