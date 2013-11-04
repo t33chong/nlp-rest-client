@@ -22,7 +22,7 @@ try:
             print service
             getattr(sys.modules[__name__], service)().get(wid)
             caching_dict[service+'.get'] = {'dont_compute': True}  # DRY fool!
-            useCaching(caching_dict)
+            useCaching(perServiceCaching=caching_dict)
         except KeyboardInterrupt:
             sys.exit()
         except Exception as e:

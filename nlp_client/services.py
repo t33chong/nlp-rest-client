@@ -811,10 +811,12 @@ class EntityDocumentCountsService(RestfulResource):
         counter = 1
         page_doc_ids = page_doc_response.get(wiki_id, [])
         total = len(page_doc_ids)
+        print total
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + 1) , entities_with_count)
             counter += 1
+            print "%d / %d" % (counter, total)
 
         counts_to_entities = {}
         for entity in entities_to_count.keys():
@@ -862,6 +864,7 @@ class WpEntityDocumentCountsService(RestfulResource):
 class ListDocIdsService(RestfulResource):
     
     ''' Service to expose resources in WikiDocumentIterator '''
+    @cachedServiceRequest
     def get(self, wiki_id, start=0, limit=None):
 
         bucket = get_s3_bucket()
