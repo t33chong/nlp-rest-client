@@ -194,7 +194,7 @@ class PhraseService():
 
 
     @staticmethod
-    def phrases_from_json(json_parse), phrase_types:
+    def phrases_from_json(json_parse, phrase_types):
         return [' '.join(f.leaves())
                 for sentence in asList(dict.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', []))
                 for f in nltk.Tree.parse(sentence.get('parse', '')).subtrees() if f.node in phrase_types
