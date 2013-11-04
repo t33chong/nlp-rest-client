@@ -1,6 +1,7 @@
 import os
 import xmltodict
 import nltk
+import requests
 
 from services import PhraseService, ParsedJsonService
 
@@ -20,8 +21,9 @@ def phrases_for_wiki_field(wid, field):
 
 
 def get_main_page_nps(wid):
-    doc_id = requests.get('http://search-s10:8983/solr/main/select', 
-                        params=dict(wt='json', q='wid:%s AND is_main_page=true', fl='id'))\
-                        .json().get('response', {}).get('docs', [{}]).get[0].get('id', None)
+    response = requests.get('http://search-s10:8983/solr/main/select', 
+                        params=dict(wt='json', q='wid:%s AND is_main_page:true' % wid, fl='id'))
+
+    doc_id = response.json().get('response', {}).get('docs', [{}])[0].get('id', None)
 
     return PhraseService.phrases_from_json(ParsedJsonService().nestedGet(doc_id, {}), NOUN_TAGS) if doc_id is not None else []
