@@ -363,7 +363,7 @@ class DocumentSentimentService(RestfulResource):
             response['message'] = 'No sentences in this parse.'
             return response
 
-        response['averageSentiment'] = sentencesNode.get('averageSentiment')
+        response['averageSentiment'] = sentencesNode.get('@averageSentiment')
 
         if response['averageSentiment'] is None:
             response['status'] = 500
@@ -372,44 +372,46 @@ class DocumentSentimentService(RestfulResource):
 
         docParaphrases = CoreferenceCountsService().nestedGet(doc_id, {}).get('paraphrases', {})
 
-        val_to_canonical = dict(map(lambda x: map(title_confirmation.preprocess, x),
-                                [(key, key) for key in docParaphrases]
-                                + [(value, key) for key in docParaphrases for value in docParaphrases[key]]))
+        self.val_to_canonical = dict(map(lambda x: map(title_confirmation.preprocess, x),
+                                         [(key, key) for key in docParaphrases]
+                                         + [(value, key) for key in docParaphrases for value in docParaphrases[key]]))
 
-        if '' in val_to_canonical:
-            del val_to_canonical['']  # wat
+        if '' in self.val_to_canonical:
+            del self.val_to_canonical['']  # wat
 
-        phrasesToSentiment = dict()
-
-        def traverse_tree_for_sentiment(sent, parse=None):
-            try:
-                if parse is None:
-                    sexpr = sent.get('sentence', {}).get('parse', '').decode('ISO-8859-2').encode('utf-8')
-                    if sexpr == '':
-                        return  # can't do anything with this junk
-                    parse = nltk.Tree.parse(sexpr)
-
-                flattened = str(parse.flatten()) if not isinstance(parse, basestring) else parse
-                if flattened in val_to_canonical:
-                    phrasesToSentiment[flattened] = phrasesToSentiment.get(flattened, []) + [int(sent['@sentiment'])]
-                    return  # don't need to keep going
-
-                if not isinstance(parse, basestring):
-                    for i in range(0, len(parse)):
-                        traverse_tree_for_sentiment(sent, parse[i])
-            except UnicodeEncodeError:
-                return  # gotta fix
+        self.phrasesToSentiment = dict()
 
         sentences = doc.get('root', {}).get('document', {}).get('sentences', {}).get('sentence')
         if isinstance(sentences, dict):
             #singleton sentence
             sentences = [sentences]
 
-        map(traverse_tree_for_sentiment, sentences)
+        for sentence in sentences:
+            self.traverse_tree_for_sentiment(sentence)
 
-        response['averagePhraseSentiment'] = dict([(x[0], numpy.mean(x[1])) for x in phrasesToSentiment.items()])
+        response['averagePhraseSentiment'] = dict([(x[0], numpy.mean(x[1])) for x in self.phrasesToSentiment.items()])
 
         return {'status': 200, doc_id: response}
+
+    def traverse_tree_for_sentiment(self, sent, parse=None):
+        try:
+            if parse is None:
+                sexpr = sent.get('parse', '').decode('ISO-8859-2').encode('utf-8')
+                if sexpr == '':
+                    return  # can't do anything with this junk
+                parse = nltk.Tree.parse(sexpr)
+                
+            flattened = str(parse.flatten()) if not isinstance(parse, basestring) else parse
+            if flattened in self.val_to_canonical:
+                self.phrasesToSentiment[flattened] = self.phrasesToSentiment.get(flattened, []) + [int(sent['@sentiment'])]
+                return  # don't need to keep going
+
+            if not isinstance(parse, basestring):
+                for i in range(0, len(parse)):
+                    self.traverse_tree_for_sentiment(sent, parse[i])
+        except UnicodeEncodeError:
+            return  # gotta fix
+
 
 
 class DocumentEntitySentimentService(RestfulResource):
@@ -441,10 +443,15 @@ class WikiEntitySentimentService(RestfulResource):
 
         entitySentiment = {}
         dss = DocumentSentimentService()
+        counter = 0
+        total = len(page_doc_response[wiki_id])
         for doc_id in page_doc_response[wiki_id]:
-            sent_response = dss.getNested(wiki_id)
-            for key in sent_response:
-                entitySentiment[key] = entitySentiment.get(key, []) + sent_response[key]
+            sent_response = dss.nestedGet(doc_id, {})
+            avg_phrase_sentiment = sent_response.get('averagePhraseSentiment', {})
+            print "%d / %d (%d keys)" % (counter, total, len(avg_phrase_sentiment.keys()))
+            counter += 1
+            for key in avg_phrase_sentiment:
+                entitySentiment[key] = entitySentiment.get(key, []) + [avg_phrase_sentiment[key]]
 
         return {'status': 200, wiki_id: dict([(key, numpy.mean(entitySentiment[key])) for key in entitySentiment])}
 
@@ -460,9 +467,9 @@ class WpWikiEntitySentimentService(RestfulResource):
             return page_doc_response
 
         entitySentiment = {}
-        dss = WpDocumentSentimentService()
+        dss = WpDocumentEntitySentimentService()
         for doc_id in page_doc_response[wiki_id]:
-            sent_response = dss.getNested(wiki_id)
+            sent_response = dss.nestedGet(doc_id)
             for key in sent_response:
                 entitySentiment[key] = entitySentiment.get(key, []) + sent_response[key]
 
@@ -492,8 +499,8 @@ class AllEntitiesSentimentAndCountsService(RestfulResource):
     @cachedServiceRequest
     def get(self, wiki_id):
         counts = dict(
-            WpDocumentEntityCountsService().nestedGet(wiki_id).items() +
-            DocumentEntityCountsService().nestedGet(wiki_id).items()
+            WpWikiEntitiesService().nestedGet(wiki_id).items() +
+            WikiEntitiesService().nestedGet(wiki_id).items()
         )
         sentiments = dict (
             DocumentEntitySentimentService().nestedGet(wiki_id) +
@@ -811,7 +818,6 @@ class EntityDocumentCountsService(RestfulResource):
         counter = 1
         page_doc_ids = page_doc_response.get(wiki_id, [])
         total = len(page_doc_ids)
-        print total
         for page_doc_id in page_doc_ids:
             entities_with_count = entity_service.get(page_doc_id).get(page_doc_id, {}).items()
             map(lambda x: entities_to_count.__setitem__(x[0], entities_to_count.get(x[0], 0) + 1) , entities_with_count)
