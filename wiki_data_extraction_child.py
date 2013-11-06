@@ -8,12 +8,15 @@ from nlp_client.caching import useCaching
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
-service_file = sys.argv[2] if len(sys.argv) > 2 else 'services-config.json'
+#todo argparse
+service_file = 'services-config.json'
 SERVICES = json.loads(open(service_file).read())['wiki-services']
 
 caching_dict = dict([(service+'.get', {'write_only': True}) for service in SERVICES])
-caching_dict = {}
 useCaching(perServiceCaching=caching_dict)
+
+if len(sys.argv) > 2:
+    use_multiprocessing(num_cores=int(sys.argv[2]))
 
 wid = sys.argv[1]
 try:

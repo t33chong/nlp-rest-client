@@ -6,6 +6,7 @@ from caching import cachedServiceRequest, write_only
 from mrg_utils import Sentence as MrgSentence
 from boto import connect_s3
 from boto.s3.key import Key
+from multiprocessing import Pool, Manager
 import socket
 import time
 import title_confirmation
@@ -22,6 +23,15 @@ import numpy
 This module contains all services used in our RESTful client.
 At this point, they are all read-only, and only respond to GET.
 '''
+
+USE_MULTIPROCESSING = False
+MP_NUM_CORES = 4
+
+def use_multiprocessing(num_cores=4):
+    global USE_MULTIPROCESSING, MP_NUM_CORES
+    USE_MULTIPROCESSING = True
+    MP_NUM_CORES  = num_cores
+    
 
 S3_BUCKET = None
 
@@ -427,9 +437,19 @@ class DocumentEntitySentimentService(RestfulResource):
         entities = EntitiesService().nestedGet(doc_id, [])
 
         return {'status': 200,
-                'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
+                doc_id: dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
                                         sentimentResponse[doc_id]['averagePhraseSentiment'].items()))
                 }
+
+
+def update_dict_dess(tup):
+    managed, doc_id, doc_ids = tup
+    doc_ids += [doc_id]
+    print len(doc_ids)
+    service_response = DocumentEntitySentimentService().nestedGet(doc_id, {})
+    for key in service_response:
+        managed[key] = managed.get(key, []) + [service_response[key]]
+
 
 class WikiEntitySentimentService(RestfulResource):
 
@@ -437,23 +457,42 @@ class WikiEntitySentimentService(RestfulResource):
     @cachedServiceRequest
     def get(self, wiki_id):
 
+        global USE_MULTIPROCESSING, MP_NUM_CORES
+
         page_doc_response = ListDocIdsService().get(wiki_id)
         if page_doc_response['status'] != 200:
             return page_doc_response
 
-        entitySentiment = {}
-        dss = DocumentSentimentService()
-        counter = 0
-        total = len(page_doc_response[wiki_id])
-        for doc_id in page_doc_response[wiki_id]:
-            sent_response = dss.nestedGet(doc_id, {})
-            avg_phrase_sentiment = sent_response.get('averagePhraseSentiment', {})
-            print "%d / %d (%d keys)" % (counter, total, len(avg_phrase_sentiment.keys()))
-            counter += 1
-            for key in avg_phrase_sentiment:
-                entitySentiment[key] = entitySentiment.get(key, []) + [avg_phrase_sentiment[key]]
 
-        return {'status': 200, wiki_id: dict([(key, numpy.mean(entitySentiment[key])) for key in entitySentiment])}
+        if USE_MULTIPROCESSING:
+            m = Manager()
+            d = m.dict()
+            l = m.list()
+            results = Pool(processes=MP_NUM_CORES).map(update_dict_dess, [(d, doc_id, l) for doc_id in page_doc_response[wiki_id]])
+            entitySentiment = dict(d.items())
+        else:
+            entitySentiment = {}
+            dss = DocumentSentimentService()
+            counter = 0
+            total = len(page_doc_response[wiki_id])
+            for doc_id in page_doc_response[wiki_id]:
+                sent_response = dss.nestedGet(doc_id, {})
+                avg_phrase_sentiment = sent_response.get('averagePhraseSentiment', {})
+                print "%d / %d (%d keys)" % (counter, total, len(avg_phrase_sentiment.keys()))
+                counter += 1
+                for key in avg_phrase_sentiment:
+                    entitySentiment[key] = entitySentiment.get(key, []) + [avg_phrase_sentiment[key]]
+
+        return {'status': 200, wiki_id: dict([(key, numpy.mean([i+1 for i in entitySentiment[key]])+1) for key in entitySentiment])}
+
+
+def update_dict_wpdess(tup):
+    managed, doc_id, ids = tup
+    ids += [doc_id]
+    print len(ids)
+    service_response = WpDocumentEntitySentimentService().nestedGet(doc_id, {})
+    for key in service_response:
+        managed[key] = managed.get(key, []) + [service_response[key]]
 
 
 class WpWikiEntitySentimentService(RestfulResource):
@@ -462,18 +501,31 @@ class WpWikiEntitySentimentService(RestfulResource):
     @cachedServiceRequest
     def get(self, wiki_id):
 
+        global USE_MULTIPROCESSING, MP_NUM_CORES
+
         page_doc_response = ListDocIdsService().get(wiki_id)
         if page_doc_response['status'] != 200:
             return page_doc_response
 
-        entitySentiment = {}
-        dss = WpDocumentEntitySentimentService()
-        for doc_id in page_doc_response[wiki_id]:
-            sent_response = dss.nestedGet(doc_id)
-            for key in sent_response:
-                entitySentiment[key] = entitySentiment.get(key, []) + sent_response[key]
+        if USE_MULTIPROCESSING:
+            m = Manager()
+            d = m.dict()
+            l = m.list()
+            results = Pool(processes=MP_NUM_CORES).map(update_dict_wpdess, [(d, i, l) for i in page_doc_response[wiki_id]])
+            entitySentiment = dict(d.items())
+        else:
+            entitySentiment = {}
+            dss = WpDocumentEntitySentimentService()
+            total = len(page_doc_response[wiki_id])
+            counter = 0
+            for doc_id in page_doc_response[wiki_id]:
+                sent_response = dss.NestedGet(doc_id)
+                if sent_response is not None:
+                    print "%d / %d (%d keys)" % (counter, total, len(sent_response))
+                    for key in sent_response:
+                        entitySentiment[key] = entitySentiment.get(key, []) + sent_response[key]
 
-        return {'status': 200, wiki_id: dict([(key, numpy.mean(entitySentiment[key])) for key in entitySentiment])}
+        return {'status': 200, wiki_id: dict([(key, numpy.mean([i + 1 for i in entitySentiment[key]])-1) for key in entitySentiment])}
 
         
 
@@ -489,7 +541,7 @@ class WpDocumentEntitySentimentService(RestfulResource):
         entities = WpEntitiesService().nestedGet(doc_id, [])
 
         return {'status': 200,
-                'entities': dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
+                doc_id: dict(filter(lambda x: title_confirmation.check_wp(x[0]) or x[0] in entities,
                                         sentimentResponse[doc_id]['averagePhraseSentiment'].items()))
                 }
 
@@ -503,8 +555,8 @@ class AllEntitiesSentimentAndCountsService(RestfulResource):
             WikiEntitiesService().nestedGet(wiki_id).items()
         )
         sentiments = dict (
-            DocumentEntitySentimentService().nestedGet(wiki_id) +
-            WpDocumentEntitySentimentService().nestedGet(wiki_id)
+            WikiEntitySentimentService().nestedGet(wiki_id, {}).items() +
+            WpWikiEntitySentimentService().nestedGet(wiki_id, {}).items()
         )
 
         resp_dict = {}
@@ -512,7 +564,12 @@ class AllEntitiesSentimentAndCountsService(RestfulResource):
             resp_dict[s] = {'sentiment': sentiments[s] }
 
         for c in counts:
-            respDict[c] = dict(resp_dict.get(c, {}).items() + ('count', counts[c]))
+            for key in counts[c]:
+                if key in resp_dict:
+                    resp_dict[key]['count'] = c
+                else:
+                    resp_dict[key] = {'count': c}
+            resp_dict[c] = dict(resp_dict.get(c, {}).items() + [('count', counts[c])])
         
         return { 'status': 200, wiki_id: resp_dict }
 
