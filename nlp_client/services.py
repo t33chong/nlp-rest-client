@@ -574,6 +574,76 @@ class AllEntitiesSentimentAndCountsService(RestfulResource):
         return { 'status': 200, wiki_id: resp_dict }
 
 
+
+class SentencesForEntityService(RestfulResource):
+
+    def get(self, doc_id, entity):
+        parse = ParsedJsonService().nestedGet(doc_id)
+        if parse.get('root', {}).get('document', {}).get('sentences', {}) is None:
+            return {'status': 200, entity: []}
+        sents = asList(parse.get('root', {}).get('document', {}).get('sentences', {}).get('sentence', []))
+        corefs = asList(parse.get('root', {}).get('document', {}).get('coreference', {}).get('coreference', []))
+        sents_processed =  [' '.join([token['word'] for token in asList(sent['tokens']['token'])]) for sent in sents]
+        sents_preprocessed = [' '.join([title_confirmation.preprocess(token['word']) for token in asList(sent['tokens']['token'])]) for sent in sents]
+        coreferences = []
+        sentences_to_add = []
+        for coref in corefs:
+            dont_add = True
+            for m in asList(coref['mention']):
+                try:
+                    mention_string = ' '.join([title_confirmation.preprocess(a['word']) for a in sents[int(m['sentence'])-1]['tokens']['token'][int(m['start'])-1:int(m['end'])-1]])
+                    if title_confirmation.preprocess(entity) == mention_string:
+                        sentences_to_add += [int(m['sentence'])-1 for m in asList(coref['mention'])]
+                        break
+                except TypeError:
+                    pass # fuck it
+
+        sentences_to_add = list(set(sentences_to_add + [i for i in range(0, len(sents)) if entity in sents_preprocessed[i]]))
+
+        return {'status': 200, entity: [{'sentiment': sents[i].get('@sentiment', None), 'sentence': sents_processed[i]} for i in range(0, len(sents)) if i in sentences_to_add]}
+
+
+def add_brand_sent_sentiment(d):
+    update_list, doc_ids, doc_id, brand = d
+    print len(doc_ids)
+    doc_ids += [doc_id]
+    return SentencesForEntityService().get(doc_id, brand).get(brand, [])
+    
+
+class BrandSentimentReportService(RestfulResource):
+
+    ''' Not cached. Pulls all mentions of a brand (or entity), 
+    and returns all sentences with mentions of said brand, sorted by sentiment'''
+
+    def get(self, wiki_id, brand):
+        '''
+        :param wiki_id: string
+        :param brand: string name of brand
+        '''
+        page_doc_response = ListDocIdsService().get(wiki_id)
+        if page_doc_response['status'] != 200:
+            return page_doc_response
+
+        if USE_MULTIPROCESSING:
+            m = Manager()
+            d = m.list()
+            l = m.list()
+            sents = [a for b in Pool(processes=MP_NUM_CORES).map(add_brand_sent_sentiment, [(d, l, i, brand) for i in page_doc_response[wiki_id]]) for a in b]
+        else:
+            ses = SentencesForEntityService()
+            total = len(page_doc_response[wiki_id])
+            counter = 0
+            sents = []
+            for doc_id in page_doc_response[wiki_id]:
+                resp = ses.get(doc_id, brand)
+                sents += resp.get(brand, [])
+                counter += 1
+                print "%d / %d" % (counter, total)
+
+        return {'status': 200, brand: sents}
+        
+
+
 class AllTitlesService(RestfulResource):
 
     ''' Responsible for accessing all titles from database using title_confirmation module '''
