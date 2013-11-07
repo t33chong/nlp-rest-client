@@ -607,6 +607,8 @@ def add_brand_sent_sentiment(d):
     update_list, doc_ids, doc_id, brand = d
     print len(doc_ids)
     doc_ids += [doc_id]
+    # multiprocessing bottleneck fix
+    #open('data_output.json', 'a').write("%s,%s\n" % (doc_id, json.dumps(SentencesForEntityService().get(doc_id, brand).get(brand, []))))
     return SentencesForEntityService().get(doc_id, brand).get(brand, [])
     
 
@@ -628,7 +630,11 @@ class BrandSentimentReportService(RestfulResource):
             m = Manager()
             d = m.list()
             l = m.list()
-            sents = [a for b in Pool(processes=MP_NUM_CORES).map(add_brand_sent_sentiment, [(d, l, i, brand) for i in page_doc_response[wiki_id]]) for a in b]
+            done_ids = dict([(line.split(',')[0], True) for line in open('data_output.json', 'r')])
+            print len(done_ids)
+            doc_ids = filter(lambda x: not done_ids.get(x, False), page_doc_response[wiki_id])
+            #sents = [a for b in Pool(processes=MP_NUM_CORES).map(add_brand_sent_sentiment, [(d, l, i, brand) for i in doc_ids]) for a in b]
+            Pool(processes=MP_NUM_CORES).map(add_brand_sent_sentiment, [(d, l, i, brand) for i in doc_ids])
         else:
             ses = SentencesForEntityService()
             total = len(page_doc_response[wiki_id])
@@ -636,11 +642,11 @@ class BrandSentimentReportService(RestfulResource):
             sents = []
             for doc_id in page_doc_response[wiki_id]:
                 resp = ses.get(doc_id, brand)
-                sents += resp.get(brand, [])
+                sents += (doc_id, resp.get(brand, []))
                 counter += 1
                 print "%d / %d" % (counter, total)
 
-        return {'status': 200, brand: sents}
+        return {'status': 200, brand: dict(sents)}
         
 
 
