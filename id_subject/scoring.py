@@ -7,7 +7,7 @@ class BinaryField(object):
         """Class whose main purpose is to build a simple lookup dictionary from
         a list of terms in a given field, and to save it in order to facilitate
         binary scoring.
-        Applicable fields: hostname, sitename, headline, inferred_topic_score"""
+        Applicable fields: hostname, sitename, headline, title_tag"""
         self.d = build_dict_for_simple_lookup(terms_from_field)
 
     def score(self, candidate):

@@ -5,7 +5,7 @@ from urllib2 import urlopen
 
 def guess_from_title_tag(wid):
     """Given a wiki ID, return a list containing a single string representing
-    the best guess for the wiki's topic, or an empty list if not possible."""
+    the best guess for the wiki's subject, or an empty list if not possible."""
     response = requests.get('http://search-s10:8983/solr/main/select',
                             params={'wt': 'json',
                                     'q': 'wid:%s AND is_main_page:true' % wid,

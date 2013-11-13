@@ -4,14 +4,15 @@ import re
 import requests
 import sys
 from nlp_client.wiki_parses import main_page_nps, phrases_for_wiki_field
-from topic_scoring import BinaryField, TermFreqField, preprocess, to_list
-from topic_scoring import build_dict_with_original_values
-from topic_scoring import get_subdomain, guess_from_title_tag
+from id_subject import BinaryField, TermFreqField, preprocess, to_list
+from id_subject import build_dict_with_original_values
+from id_subject import get_subdomain, guess_from_title_tag
 
 SOLR = 'http://search-s10:8983/solr/xwiki/select'
 
-def identify_topic(wid):
-    """For a given wiki ID, return a comma-separated list of top-scoring topics."""
+def identify_subject(wid):
+    """For a given wiki ID, return a comma-separated list of top-scoring
+    subjects."""
     # Request data from Solr
     params = {'q': 'id:%s' % wid,
               'fl': 'url,hostname_s,domains_txt,top_articles_txt,' +
@@ -80,7 +81,9 @@ def identify_topic(wid):
         total_scores[candidate] = total_score
 
     # Sort candidates by highest score
-    total_scores = sorted([(k, v) for (k, v) in total_scores.items() if 'wiki' not in ''.join(k).lower()], key=lambda x: x[1], reverse=True)
+    total_scores = sorted([(k, v) for (k, v) in total_scores.items() if 'wiki'
+                           not in ''.join(k).lower()], key=lambda x: x[1],
+                           reverse=True)
 
     # DEBUG
     #print response.get('hostname_s')
@@ -104,4 +107,4 @@ if __name__ == '__main__':
         if count > 100:
             break
         wid = line.strip()
-        print identify_topic(wid).encode('utf-8')
+        print identify_subject(wid).encode('utf-8')
