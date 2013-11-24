@@ -1,3 +1,7 @@
+# Rewrite a sparse topics CSV file such that topic features appearing in more
+# wikis than a given limit have the frequency 'null'. This signals to Solr that
+# the topic features in question are to be deleted.
+
 import sys
 from collections import defaultdict
 from optparse import OptionParser
@@ -27,6 +31,6 @@ with open(options.input_file) as input_file:
             data = line.strip().split(',')
             output = data[0]
             if len(data) > 1:
-                pairs = [pair for pair in data[1:] if tally[int(pair.split('-')[0])] < options.maxfreq]
-                if pairs: output += ',' + ','.join(pairs)
+                pairs = [pair if tally[int(pair.split('-')[0])] < options.maxfreq else '%s-%s' % (pair.split('-')[0], 'null') for pair in data[1:]]
+                output += ',' + ','.join(pairs)
             output_file.write(output + '\n')
