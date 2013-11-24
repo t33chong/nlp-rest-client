@@ -30,15 +30,3 @@ with open(options.input_file) as input_file:
                 pairs = [pair for pair in data[1:] if tally[int(pair.split('-')[0])] < options.maxfreq]
                 if pairs: output += ',' + ','.join(pairs)
             output_file.write(output + '\n')
-
-# For testing only
-tally_sorted = sorted(tally.items(), key=lambda x: x[1], reverse=True)
-
-delimiter = 100
-print 'TOP %i' % delimiter
-for feature, count in tally_sorted[:delimiter]:
-    print '%i\t%i' % (count, feature)
-
-print 'BOTTOM %i' % delimiter
-for feature, count in tally_sorted[-delimiter:]:
-    print '%i\t%i' % (count, feature)
