@@ -11,11 +11,15 @@ import sys
 import requests
 from multiprocessing import Pool
 from boto import connect_s3
+from boto.s3.key import Key
 from tempfile import NamedTemporaryFile
+from collections import defaultdict
 
 topN = sys.argv[1]
 
 num_topics = int(sys.argv[2])
+
+max_freq = int(sys.argv[3]) if len(sys.argv) > 3 else 500
 
 wids = [str(int(line)) for line in open('topwams.txt').readlines()][:int(topN)]
 
@@ -35,9 +39,8 @@ for result in Pool(processes=8).map(getData, wids):
 
 entities = dict(entities)
 
-widToEntityList = {}
+widToEntityList = defaultdict(list)
 for wid in entities:
-    widToEntityList[wid] = []
     for entity in entities[wid][0]:
         widToEntityList[wid] += [entity] * int(entities[wid][0][entity])
     for entity in entities[wid][1]:
@@ -59,17 +62,15 @@ filtered_out = set(unfiltered) - set(filtered)
 #print dct.token2id.keys(), '\n'
 
 print "---Bag of Words Corpus---"
- 
+
 bow_docs = {}
 for name in widToEntityList:
- 
+
     sparse = dct.doc2bow(widToEntityList[name])
     bow_docs[name] = sparse
     dense = vec2dense(sparse, num_terms=len(dct))
-    #print name, ":", dense
 
 print "\n---LDA Model---"
-lda_docs = {}
 
 modelname = 'lda-%swikis-%stopics.model' % (sys.argv[1], sys.argv[2])
 
@@ -92,20 +93,27 @@ else:
         print "Done, saving model."
         lda_model.save(modelname)
 
-print "Writing topics to files"
+print "Writing topics to dense CSV"
+with open('%swiki-%stopics-dense-topics.csv' % (sys.argv[1], sys.argv[2]), 'w') as dense_csv:
+    tally = defaultdict(int)
+    for name in widToEntityList:
+        vec = bow_docs[name]
+        sparse = lda_model[vec]
+        dense = vec2dense(sparse, num_topics)
+        for (feature, frequency) in sparse: tally[feature] += 1
+        dense_csv.write(",".join([name]+['%.8f' % x for x in list(dense)])+"\n")
+
+# Write to sparse_csv here, changing frequency of offending topic ids to 0
+print "Writing topics to sparse CSV"
 with open('%swiki-%stopics-sparse-topics.csv' % (sys.argv[1], sys.argv[2]), 'w') as sparse_csv:
-    with open('%swiki-%stopics-dense-topics.csv' % (sys.argv[1], sys.argv[2]), 'w') as dense_csv:
-        for name in widToEntityList:
-            vec = bow_docs[name]
-            sparse = lda_model[vec]
-            dense = vec2dense(sparse, num_topics)
-            lda_docs[name] = sparse
-            sparse_csv.write(",".join([str(name)]+['%d-%.8f' % x for x in sparse])+"\n")
-            dense_csv.write(",".join([name]+['%.8f' % x for x in list(dense)])+"\n")
+    for name in widToEntityList:
+        vec = bow_docs[name]
+        sparse = dict(lda_model[vec])
+        sparse_csv.write(",".join([str(name)]+['%d-%.8f' % (n, sparse.get(n, 0)) if tally[n] < max_freq else '%d-%.8f' % (n, 0) for n in range(num_topics)])+"\n")
 
 print "Done"
 
 if key is None:
     print "uploading model to s3"
-    key = Key(connect_s3().get_bucket('nlp_data'))
+    key = Key(connect_s3().get_bucket('nlp-data'))
     key.set_contents_from_file(modelname)
