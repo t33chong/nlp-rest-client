@@ -36,7 +36,6 @@ def get_keys_and_entities(wid):
     return (keys, entities)
 
 def cluster(wid):
-    global topics
     log.info('Clustering wid ' + wid)
     try:
         keys, entities = get_keys_and_entities(wid)
@@ -47,21 +46,18 @@ def cluster(wid):
         return wid + 'failed'
     # Create a dict with entity strings as keys, and tallies as values
     tally = dict(zip(entities, map(entities.count, entities)))
-    # Increment topics dict w/ totals; keep running tally of entities per key
-    for key in keys:
-        for entity in tally:
-            topics[key][entity] += tally[entity]
-    return wid + ' done'
+    return (keys, tally)
 
 # Instantiate nested defaultdicts, with values of the inner defaulting to 0
 topics = defaultdict(lambda: defaultdict(int))
 
 # Iterate over top 5k wikis
-#wids = [line.strip() for line in open('topwams.txt').readlines()[:5000]]
-wids = [line.strip() for line in open('testwams.txt').readlines()[:5000]]
-for result in Pool(processes=8).map(cluster, wids): print result
-
-print topics; sys.exit(0)
+wids = [line.strip() for line in open('topwams.txt').readlines()[:5000]]
+for (keys, tally) in Pool(processes=8).map(cluster, wids):
+    # Increment topics dict w/ totals; keep running tally of entities per key
+    for key in keys:
+        for entity in tally:
+            topics[key][entity] += tally[entity]
 
 # Write most frequent entities per topic feature to CSV
 with open('clustered.csv', 'w') as f:
