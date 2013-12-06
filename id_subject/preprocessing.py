@@ -12,6 +12,8 @@ def preprocess(text):
 
 def to_list(terms):
     """Ensure that object is a list"""
+    if terms is None:
+        terms = []
     if isinstance(terms, (str, unicode)):
         terms = [terms]
     return terms
