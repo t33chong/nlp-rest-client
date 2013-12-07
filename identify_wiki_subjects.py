@@ -20,7 +20,7 @@ log.addHandler(sh)
 
 SOLR = 'http://search-s10:8983/solr/xwiki/select'
 
-def identify_subject(wid, stemmed=False):
+def identify_subject(wid, terms_only=False):
     """For a given wiki ID, return a comma-separated list of top-scoring
     subjects."""
     # Request data from Solr
@@ -115,8 +115,8 @@ def identify_subject(wid, stemmed=False):
         else:
             break
 
-    if stemmed:
-        return top_stemmed
+    if terms_only:
+        return ','.join(top_terms)
     return '%s,%s,%s' % (wid, response.get('hostname_s'), ','.join(top_terms))
 
 if __name__ == '__main__':
