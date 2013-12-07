@@ -119,7 +119,7 @@ for (wid, topics, wiki_entities, tally) in Pool(processes=8).map(magic, wids):
     entities_for_wiki[wid] = wiki_entities
 
 # Write best-fit title per topic feature to CSV
-with open('clustered%d.csv' % top_n, 'w') as f:
+with open('topic_names_%d_wikis.csv' % top_n, 'w') as f:
     for (topic, title) in Pool(processes=8).map(name_topic,
                                                 entity_counts_for_topic.keys()):
         f.write('%s,%s\n'.encode('utf-8') % (topic, title))
