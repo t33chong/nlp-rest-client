@@ -84,6 +84,9 @@ def name_topic(topic):
     """Given a topic, return the best-fit title based on Jaccard distance from
     a wiki's top entities"""
     log.info('Finding title for ' + topic)
+    # Make sure topic is in dictionary
+    if not entity_counts_for_topic.get(topic, False):
+        return (topic, '')
     # Get top 50 entities associated with topic
     s = sorted(entity_counts_for_topic[topic].items(), key=lambda x: x[1],
                reverse=True)
