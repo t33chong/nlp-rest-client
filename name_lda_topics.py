@@ -5,6 +5,7 @@ from __future__ import division
 # top entities per wiki, and naming the topic feature after the best-fit wiki
 
 import logging
+import pickle
 import requests
 import sys
 import traceback
@@ -120,6 +121,14 @@ for (wid, topics, wiki_entities, tally) in Pool(processes=8).map(magic, wids):
         wikis_for_entity[entity].append(wid)
     # Keep track of top entities present per wiki
     entities_for_wiki[wid] = wiki_entities
+
+# Pickle defaultdicts to avoid data loss upon Exception
+with open('entity_counts_for_topic_%d.pkl' % top_n, 'w') as a:
+    pickle.dump(entity_counts_for_topic, a)
+with open('entities_for_wiki_%d.pkl' % top_n, 'w') as b:
+    pickle.dump(entities_for_wiki, b)
+with open('wikis_for_entity_%d.pkl' % top_n, 'w') as c:
+    pickle.dump(wikis_for_entity, c)
 
 # Write best-fit title per topic feature to CSV
 with open('topic_names_%d_wikis.csv' % top_n, 'w') as f:
