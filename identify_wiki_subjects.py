@@ -31,7 +31,13 @@ def identify_subject(wid, terms_only=False):
 
     r = requests.get(SOLR, params=params)
     j = json.loads(r.content)
-    response = j['response']['docs'][0]
+    docs = j['response']['docs']
+    # Handle 0 docs response
+    if not docs:
+        if terms_only:
+            return ''
+        return wid
+    response = docs[0]
 
     # Get lists of NPs or raw data, depending on the field
     hostname = [get_subdomain(url) for url in to_list(response.get('hostname_s'))]
