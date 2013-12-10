@@ -4,8 +4,8 @@ from __future__ import division
 # common to them across different wikis, calculating Jaccard distance against
 # top entities per wiki, and naming the topic feature after the best-fit wiki
 
+import json
 import logging
-import pickle
 import requests
 import sys
 import traceback
@@ -105,7 +105,7 @@ def name_topic(topic):
     title = identify_subject(best_wid, terms_only=True)
     return (topic, title)
 
-# Instantiate global defaultdicts
+# Instantiate global dictionaries
 entity_counts_for_topic = defaultdict(lambda: defaultdict(int))
 entities_for_wiki = defaultdict(list)
 wikis_for_entity = defaultdict(list)
@@ -122,16 +122,19 @@ for (wid, topics, wiki_entities, tally) in Pool(processes=8).map(magic, wids):
     # Keep track of top entities present per wiki
     entities_for_wiki[wid] = wiki_entities
 
-# Pickle defaultdicts to avoid data loss upon Exception
-with open('entity_counts_for_topic_%d.pkl' % top_n, 'w') as a:
-    pickle.dump(entity_counts_for_topic, a)
-with open('entities_for_wiki_%d.pkl' % top_n, 'w') as b:
-    pickle.dump(entities_for_wiki, b)
-with open('wikis_for_entity_%d.pkl' % top_n, 'w') as c:
-    pickle.dump(wikis_for_entity, c)
+# Serialize dictionaries to avoid data loss upon Exception
+with open('entity_counts_for_topic_%d.json' % top_n, 'w') as a:
+    a.write(json.dumps(entity_counts_for_topic))
+with open('entities_for_wiki_%d.json' % top_n, 'w') as b:
+    b.write(json.dumps(entities_for_wiki))
+with open('wikis_for_entity_%d.json' % top_n, 'w') as c:
+    c.write(json.dumps(wikis_for_entity))
 
 # Write best-fit title per topic feature to CSV
 with open('topic_names_%d_wikis.csv' % top_n, 'w') as f:
     for (topic, title) in Pool(processes=8).map(name_topic,
                                                 entity_counts_for_topic.keys()):
-        f.write('%s,%s\n'.encode('utf-8') % (topic, title))
+        try:
+            f.write('%s,%s\n'.encode('utf-8') % (topic, title))
+        except:
+            log.error('%s: %s' % (topic, traceback.format_exc()))
