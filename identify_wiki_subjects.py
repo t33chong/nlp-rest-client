@@ -1,5 +1,6 @@
 from __future__ import division
 import json
+import logging
 import re
 import requests
 import sys
@@ -8,9 +9,18 @@ from id_subject import BinaryField, TermFreqField, preprocess, to_list
 from id_subject import build_dict_with_original_values
 from id_subject import get_subdomain, guess_from_title_tag
 
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+fh = logging.FileHandler('identify_wiki_subjects.log')
+fh.setLevel(logging.ERROR)
+log.addHandler(fh)
+sh = logging.StreamHandler()
+sh.setLevel(logging.INFO)
+log.addHandler(sh)
+
 SOLR = 'http://search-s10:8983/solr/xwiki/select'
 
-def identify_subject(wid):
+def identify_subject(wid, terms_only=False):
     """For a given wiki ID, return a comma-separated list of top-scoring
     subjects."""
     # Request data from Solr
@@ -21,7 +31,13 @@ def identify_subject(wid):
 
     r = requests.get(SOLR, params=params)
     j = json.loads(r.content)
-    response = j['response']['docs'][0]
+    docs = j['response']['docs']
+    # Handle 0 docs response
+    if not docs:
+        if terms_only:
+            return ''
+        return wid
+    response = docs[0]
 
     # Get lists of NPs or raw data, depending on the field
     hostname = [get_subdomain(url) for url in to_list(response.get('hostname_s'))]
@@ -31,10 +47,15 @@ def identify_subject(wid):
     description = to_list(phrases_for_wiki_field(wid, 'description_txt'))
     top_titles = to_list(response.get('top_articles_txt'))
     top_categories = to_list(response.get('top_categories_txt'))
-    title_tag = to_list(guess_from_title_tag(wid))
+    try:
+        title_tag = to_list(guess_from_title_tag(wid))
+    except:
+        log.error('Cannot retrieve title HTML tag data from wid %s' % wid)
+        title_tag = []
 
     fields = [hostname, domains, sitename, headline, description, top_titles,
               top_categories, title_tag]
+    log.debug(fields)
 
     # Build dictionary with preprocessed candidate keys and original term values
     candidates = main_page_nps(wid)
@@ -92,12 +113,16 @@ def identify_subject(wid):
     # Return unstemmed forms of all candidates sharing the top score
     top_score = total_scores[0][1]
     top_terms = []
+    top_stemmed = []
     for pair in total_scores:
         if pair[1] >= top_score:
             top_terms.append(candidates[pair[0]][0])
+            top_stemmed.append(pair[0])
         else:
             break
 
+    if terms_only:
+        return ','.join(top_terms)
     return '%s,%s,%s' % (wid, response.get('hostname_s'), ','.join(top_terms))
 
 if __name__ == '__main__':

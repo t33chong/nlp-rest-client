@@ -28,6 +28,9 @@ def main_page_nps(wid):
     response = requests.get('http://search-s10:8983/solr/main/select', 
                         params=dict(wt='json', q='wid:%s AND is_main_page:true' % wid, fl='id'))
 
-    doc_id = response.json().get('response', {}).get('docs', [{}])[0].get('id', None)
+    docs = response.json().get('response', {}).get('docs', [{}])
+    if not docs:
+        return []
+    doc_id = docs[0].get('id', None)
 
     return PhraseService.phrases_from_json(ParsedJsonService().nestedGet(doc_id, {}), NOUN_TAGS) if doc_id is not None else []

@@ -22,12 +22,16 @@ class TermFreqField(object):
         order to facilitate term frequency calculations.
         Applicable fields: domains, description, top titles, top categories"""
         self.d = build_dict_with_term_counts(terms_from_field)
-        self.max_score = max(self.d.values())
+        self.max_score = None
+        if len(self.d.values()) > 0:
+            self.max_score = max(self.d.values())
 
     def score(self, candidate):
         """Return a score based on the term frequency of a given candidate in a
         term count dictionary for a certain field."""
-        return self.d.get(candidate, 0.0) / self.max_score
+        if self.max_score is not None:
+            return self.d.get(candidate, 0.0) / self.max_score
+        return 0.0
 
 if __name__ == '__main__':
     foo = BinaryField(['bar'])
