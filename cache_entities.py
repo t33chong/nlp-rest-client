@@ -50,4 +50,4 @@ while True:
     ids = get_from_queue()
     if not ids:
         sys.exit(0)
-    cache_entities(wid)
+    cache_entities(ids)
