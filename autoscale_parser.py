@@ -67,6 +67,5 @@ print instance_ids
 
 print conn.create_tags(instance_ids, tags)
 
-instances = [instance.id for reservation in conn.get_all_instances(filters=filters) for instance in reservation]
-print 'filters:'
+instances = [instance.id for reservation in conn.get_all_instances(filters=filters) for instance in reservation.instances]
 print instances
