@@ -4,7 +4,7 @@ from boto.s3.key import Key
 from optparse import OptionParser
 from time import sleep
 
-COUNT = 10
+COUNT = 0
 TAG = 'parser'
 PRICE = '0.300'
 AMI = 'ami-f48c14c4'
@@ -29,43 +29,92 @@ op.add_option('-t', '--tag', dest='tag', default=TAG,
               help='The tag name to operate over')
 (options, args) = op.parse_args()
 
-tags = {'Name': options.tag}
-filters = {'tag:Name': options.tag}
+def create_instances(conn):
+    """
+    Request spot instances.
 
-conn = connect_to_region('us-west-2')
+    :type conn: boto.ec2.connection.EC2Connection
+    :param conn: An EC2Connection object in which to request spot instances
 
-reservation = conn.request_spot_instances(price=options.price,
-                                          image_id=options.ami,
-                                          count=options.count,
-                                          key_name=options.key,
-                                          security_groups=options.sec.split(','),
-                                          instance_type=options.type)
+    :rtype: boto.ec2.instance.Reservation
+    :return: The Reservation object representing the spot instance request
+    """
+    return conn.request_spot_instances(price=options.price,
+                                       image_id=options.ami,
+                                       count=options.count,
+                                       key_name=options.key,
+                                       security_groups=options.sec.split(','),
+                                       instance_type=options.type)
 
-print reservation
+def get_instance_ids(reservation):
+    """
+    Get instance IDs for a particular reservation.
 
-request_ids = [request.id for request in reservation]
-print request_ids
+    :type reservation: boto.ec2.instance.Reservation
+    :param reservation: A Reservation object created by requesting spot instances
 
-while True:
-    sleep(1)
-    requests = conn.get_all_spot_instance_requests(request_ids=request_ids)
-    instance_ids = []
-    for request in requests:
-        instance_id = request.instance_id
-        print 'instance_id is %s' % instance_id
-        if instance_id is None:
-            break
-        print 'appending %s' % instance_id
-        instance_ids.append(instance_id)
-    if len(instance_ids) < len(reservation):
-        print 'not enough instance_ids'
-        continue
-    break
+    :rtype: list
+    :return: A list containing strings representing the instance IDs of the
+             given Reservation
+    """
+    request_ids = [request.id for request in reservation]
+    while True:
+        sleep(1)
+        requests = conn.get_all_spot_instance_requests(request_ids=request_ids)
+        instance_ids = []
+        for request in requests:
+            instance_id = request.instance_id
+            #print 'instance_id is %s' % instance_id
+            if instance_id is None:
+                break
+            #print 'appending %s' % instance_id
+            instance_ids.append(instance_id)
+        if len(instance_ids) < len(reservation):
+            #print 'not enough instance_ids'
+            continue
+        break
+    return instance_ids
 
-print 'instance_id collection complete'
-print instance_ids
+def tag_instances(conn, instance_ids):
+    """
+    Attach identifying tags to the specified instances.
 
-print conn.create_tags(instance_ids, tags)
+    :type conn: boto.ec2.connection.EC2Connection
+    :param conn: An EC2Connection object in which to tag spot instances
 
-instances = [instance.id for reservation in conn.get_all_instances(filters=filters) for instance in reservation.instances]
-print instances
+    :type instance_ids: list
+    :param instance_ids: A list of instance IDs to tag
+
+    :rtype: boolean
+    :return: A boolean indicating whether tagging was successful
+    """
+    tags = {'Name': options.tag}
+    return conn.create_tags(instance_ids, tags)
+
+def get_tagged_instances(conn):
+    """
+    Get instances labeled with the tags specified in the options.
+
+    :type conn: boto.ec2.connection.EC2Connection
+    :param conn: An EC2Connection object in which to tag spot instances
+
+    :rtype: list
+    :return: A list of strings representing the IDs of the tagged instances
+    """
+    filters = {'tag:Name': options.tag}
+    return [instance.id for reservation in conn.get_all_instances(filters=filters)
+            for instance in reservation.instances]
+
+if __name__ == '__main__':
+    conn = connect_to_region('us-west-2')
+
+    if options.count:
+        # Create spot instances
+        reservation = create_instances(conn)
+        # Tag created spot instances
+        instance_ids = get_instance_ids(reservation)
+        tag_instances(conn, instance_ids)
+
+    # Get tagged instances
+    tagged_instances = get_tagged_instances(conn)
+    print tagged_instances # debug
