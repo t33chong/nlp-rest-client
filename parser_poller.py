@@ -1,9 +1,10 @@
 """
 This script polls S3 to find new text batches to parse.
 """
+from autoscale_parser import EC2RegionConnection
 from boto import connect_s3, connect_ec2
 from boto.s3.key import Key
-from boto.ec2.autoscale import connect_to_region as connect_autoscale_to
+#from boto.ec2 import connect_to_region
 from boto.exception import S3ResponseError
 from boto.utils import get_instance_metadata
 from time import time, sleep
@@ -21,20 +22,17 @@ TEXT_DIR = '/tmp/text/'
 XML_DIR = '/tmp/xml/'
 PACKAGE_DIR = "/tmp/event_packages/"
 BUCKET_NAME = 'nlp-data'
-GROUP = 'parser_poller'
 REGION = 'us-west-2'
 DESIRED_CAPACITY = 4
 
-conn = connect_s3()
-bucket = conn.get_bucket(BUCKET_NAME)
+s3_conn = connect_s3()
+bucket = s3_conn.get_bucket(BUCKET_NAME)
 hostname = gethostname()
-autoscale = connect_autoscale_to(REGION)
-autoscale_group = None
-groups = autoscale.get_all_groups(names=[GROUP])
+ec2_conn = EC2RegionConnection(REGION)
 stalling_increments = 0
 
 def add_files():
-    global hostname, bucket, PACKAGE_DIR, SIG, inqueue, autoscale_group
+    global hostname, bucket, PACKAGE_DIR, SIG, inqueue
     print "[%s] Adding to text queue" % hostname
 
     keys = filter(lambda x:x.key.endswith('.tgz'), bucket.list('text_events/'))
@@ -75,9 +73,6 @@ def add_files():
         return True
     return False
 
-if len(groups) > 0:
-    autoscale_group = groups[0]
-
 while True:
     for directory in [TEXT_DIR, XML_DIR, PACKAGE_DIR]:
         if not os.path.exists(directory):
@@ -88,13 +83,13 @@ while True:
     if inqueue < 10:
         added = add_files()
         # shut this instance down if we have an empty queue and we're above desired capacity
-        if not added and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)) and autoscale_group is not None:
-            instances = [i for i in autoscale_group.instances]
+        if not added and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)):
+            instances = ec2_conn.get_tagged_instances()
             if DESIRED_CAPACITY < len(instances):
                 print "[%s] Scaling down, shutting down." % hostname
                 current_id = get_instance_metadata()['instance-id']
                 if len(filter(lambda x: x.instance_id == current_id, instances)) == 1:
-                    autoscale.terminate_instance(current_id)
+                    ec2_conn.terminate([current_id])
                     sys.exit()
 
     print "[%s] %d text files in queue..." % (hostname, inqueue)

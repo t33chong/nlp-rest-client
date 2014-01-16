@@ -3,6 +3,7 @@ from boto.s3.connection import S3Connection
 from boto.s3.key import Key
 from optparse import OptionParser
 from time import sleep
+import traceback
 
 COUNT = 0
 REGION = 'us-west-2'
@@ -117,35 +118,37 @@ class EC2RegionConnection(object):
         """
         try:
             # Create spot instances
-            reservation = self._request_instances(conn)
+            reservation = self._request_instances(count)
             # Tag created spot instances
             instance_ids = self._get_instance_ids(reservation)
-            self._tag_instances(conn, instance_ids)
+            self._tag_instances(instance_ids)
         except:
             traceback.print_exc()
             return False
         return True
 
-    def delete_instances(self, something): pass
-
-    def scale(self, count):
+    def terminate(self, instance_ids):
         """
-        Add or delete a number of instances depending on the polarity of the
-        count parameter.
+        Terminate instances with the specified IDs.
 
-        :type count: int
-        :param count: The number by which to modify the number of active instances
+        :type instance_ids: list
+        :param instance_ids: A list of strings representing the instance IDs to
+                             be terminated
+
+        :rtype: boolean
+        :return: A boolean indicating whether termination was successful
         """
-        if count > 0:
-            return self.add_instances(count)
-        elif count < 0:
-            return self.delete_instances(abs(count))
-        else:
-            return True
+        try:
+            self.conn.terminate_instances(instance_ids)
+        except:
+            traceback.print_exc()
+            return False
+        return True
 
     def get_tagged_instances(self):
         """
-        Get instances labeled with the tags specified in the options.
+        Get pending or running instances labeled with the tags specified in the
+        options.
 
         :rtype: list
         :return: A list of strings representing the IDs of the tagged instances
@@ -153,19 +156,16 @@ class EC2RegionConnection(object):
         filters = {'tag:Name': opt.tag}
         return [instance.id for reservation in
                 self.conn.get_all_instances(filters=filters) for instance in
-                reservation.instances]
+                reservation.instances if instance.state_code < 32]
 
 if __name__ == '__main__':
     c = EC2RegionConnection()
 
     if opt.count:
-        # TODO: Write function that ensures the # of active instances == opt.count
-        difference = opt.count - len(c.get_tagged_instances)
+        difference = opt.count - len(c.get_tagged_instances())
         if difference > 0:
             c.add_instances(difference)
-        else:
-            pass # TODO
 
     # Get tagged instances
-    tagged_instances = get_tagged_instances(conn)
+    tagged_instances = c.get_tagged_instances()
     print tagged_instances # debug
