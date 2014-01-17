@@ -88,7 +88,7 @@ while True:
             if DESIRED_CAPACITY < len(instances):
                 print "[%s] Scaling down, shutting down." % hostname
                 current_id = get_instance_metadata()['instance-id']
-                if len(filter(lambda x: x.instance_id == current_id, instances)) == 1:
+                if len(filter(lambda x: x == current_id, instances)) == 1:
                     ec2_conn.terminate([current_id])
                     sys.exit()
 
