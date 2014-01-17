@@ -14,7 +14,7 @@ from boto.s3.connection import S3Connection
 from boto.s3.key import Key
 from optparse import OptionParser
 from time import sleep
-from utils import ensure_dir_exists
+from utils import chrono_sort, ensure_dir_exists
 from uuid import uuid4
 #from query_write import TEXT_DIR, TEMP_TEXT_DIR # This causes an optparse error
 
@@ -44,12 +44,6 @@ TEMP_TEXT_DIR = ensure_dir_exists('/data/temp_text/')
 if not LOCAL:
     bucket = S3Connection().get_bucket('nlp-data')
 
-def list_text_files():
-    """Return a list of files in TEXT_DIR, sorted chronologically"""
-    text_files = [(os.path.join(TEXT_DIR, filename), os.path.getmtime(os.path.join(TEXT_DIR, filename))) for filename in os.listdir(TEXT_DIR)]
-    text_files.sort(key=lambda x: x[1])
-    return text_files
-
 if __name__ == '__main__':
 
     # Set to run indefinitely
@@ -70,7 +64,7 @@ if __name__ == '__main__':
                 bypass_minimum = True
                 sleep(60)
             logger.info('Sorting text files chronologically.')
-            text_files = list_text_files()
+            text_files = chrono_sort(TEXT_DIR)
 
             for n in range(0, len(text_files), BATCHSIZE):
                 files_left = len(text_files) - n
