@@ -8,7 +8,7 @@ import traceback
 COUNT = 0
 REGION = 'us-west-2'
 PRICE = '0.300'
-AMI = 'ami-96bcdda6'
+AMI = 'ami-2cbedf1c'
 KEY = 'data-extraction'
 SECURITY_GROUPS = 'sshable'
 INSTANCE_TYPE = 'm2.4xlarge'
