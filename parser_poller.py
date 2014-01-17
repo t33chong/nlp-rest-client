@@ -10,6 +10,8 @@ from boto.utils import get_instance_metadata
 from time import time, sleep
 from socket import gethostname
 from subprocess import Popen, call
+from time import time
+from utils import chrono_sort
 import tarfile
 import os
 import shutil
@@ -73,6 +75,14 @@ def add_files():
         return True
     return False
 
+def is_newest_older_than(duration):
+    """Return True if the most recently modified file in TEXT_DIR is older than
+    a given number of minutes"""
+    newest_file, modified_time = chrono_sort(TEXT_DIR)[-1]
+    if (time() - modified_time) / 60 > duration:
+        return True
+    return False
+
 while True:
     for directory in [TEXT_DIR, XML_DIR, PACKAGE_DIR]:
         if not os.path.exists(directory):
@@ -83,7 +93,7 @@ while True:
     if inqueue < 10:
         added = add_files()
         # shut this instance down if we have an empty queue and we're above desired capacity
-        if not added and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)) == 0:
+        if not added and len(os.listdir(XML_DIR)) == 0 and is_newest_older_than(15):
             instances = ec2_conn.get_tagged_instances()
             if DESIRED_CAPACITY < len(instances):
                 print "[%s] Scaling down, shutting down." % hostname
