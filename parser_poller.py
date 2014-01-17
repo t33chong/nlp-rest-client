@@ -83,7 +83,7 @@ while True:
     if inqueue < 10:
         added = add_files()
         # shut this instance down if we have an empty queue and we're above desired capacity
-        if not added and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)):
+        if not added and len(os.listdir(XML_DIR)) == 0 and len(os.listdir(TEXT_DIR)) == 0:
             instances = ec2_conn.get_tagged_instances()
             if DESIRED_CAPACITY < len(instances):
                 print "[%s] Scaling down, shutting down." % hostname
