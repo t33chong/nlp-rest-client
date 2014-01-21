@@ -8,17 +8,6 @@ We need this script for two reasons:
 2) You can't create metric alarms for EC2 instances hosted outside of us-east-1
 """
 
-#GROUP_NAME = 'parser'
-#THRESHOLD = 10
-
-#parser = OptionParser()
-#parser.add_option('-t', '--threshold', type='int', dest='threshold', default=THRESHOLD,
-#                  help='Acceptable amount of events per process we will tolerate being backed up on')
-#parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
-#                  help='The autoscale group name to operate over')
-#
-#(options, args) = parser.parse_args()
-
 COUNT = 0
 REGION = 'us-west-2'
 PRICE = '0.300'
@@ -92,11 +81,8 @@ while True:
     events_per_instance = float(inqueue) / float(numinstances) if numinstances else 9999
     above_threshold =  events_per_instance > options.threshold
 
-    #if (options.max_size > numinstances and above_threshold) or events_per_instance < 0:
     if (options.max_size > numinstances and above_threshold):
         currinstances = numinstances
-        #ratio = float(inqueue) / float(currinstances) if currinstances else -1
-        #while ratio < 0 or (ratio > options.threshold and currinstances < options.max_size):
         ratio = float(inqueue) / float(currinstances) if currinstances else 9999
         while (ratio > options.threshold and currinstances < options.max_size):
             ec2_conn.add_instances(1)
