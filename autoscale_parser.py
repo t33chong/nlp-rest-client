@@ -19,14 +19,10 @@ opt = {
         'max_size': None
       }
 
-#def set_options(key, value):
-#    opt[key] = value
-
 class EC2RegionConnection(object):
     """
     A connection to a specified EC2 region.
     """
-    #def __init__(self, region):
     def __init__(self, region=opt['region']):
         """
         Open a boto.ec2.connection.EC2Connection object.
@@ -37,8 +33,6 @@ class EC2RegionConnection(object):
         self.conn = connect_to_region(region)
 
     def _request_instances(self, count):
-    #def _request_instances(self, price, image_id, count, key_name,
-    #                       security_groups, instance_type):
         """
         Request spot instances.
 
@@ -50,10 +44,6 @@ class EC2RegionConnection(object):
         """
         if not isinstance(opt['sec'], list):
             opt['sec'] = opt['sec'].split(',')
-        #return self.conn.request_spot_instances(price=price, image_id=image_id,
-        #                                        count=count, key_name=key_name,
-        #                                        security_groups=security_groups,
-        #                                        instance_type=instance_type)
         return self.conn.request_spot_instances(price=opt['price'],
                                                 image_id=opt['ami'],
                                                 count=count,
@@ -75,7 +65,7 @@ class EC2RegionConnection(object):
         """
         r_ids = [request.id for request in reservation]
         while True:
-            sleep(1)
+            sleep(5)
             requests = self.conn.get_all_spot_instance_requests(request_ids=r_ids)
             instance_ids = []
             for request in requests:
@@ -86,7 +76,7 @@ class EC2RegionConnection(object):
                 #print 'appending %s' % instance_id
                 instance_ids.append(instance_id)
             if len(instance_ids) < len(reservation):
-                #print 'not enough instance_ids'
+                print 'waiting for instances to launch...'
                 continue
             break
         return instance_ids
@@ -144,7 +134,6 @@ class EC2RegionConnection(object):
         return True
 
     def get_tagged_instances(self):
-    #def get_tagged_instances(self, tag):
         """
         Get pending or running instances labeled with the tags specified in the
         options.
@@ -152,15 +141,12 @@ class EC2RegionConnection(object):
         :rtype: list
         :return: A list of strings representing the IDs of the tagged instances
         """
-        #filters = {'tag:Name': tag}
         filters = {'tag:Name': opt['tag']}
         return [instance.id for reservation in
                 self.conn.get_all_instances(filters=filters) for instance in
                 reservation.instances if instance.state_code < 32]
 
 if __name__ == '__main__':
-    import sys; sys.exit(0)
-
     c = EC2RegionConnection()
 
     if opt['count']:

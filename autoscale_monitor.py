@@ -1,4 +1,3 @@
-#from autoscale_parser import set_options
 from autoscale_parser import opt
 from optparse import OptionParser
 
@@ -23,7 +22,7 @@ We need this script for two reasons:
 COUNT = 0
 REGION = 'us-west-2'
 PRICE = '0.300'
-AMI = 'parser-140117c'
+AMI = 'ami-de81e0ee'
 KEY = 'data-extraction'
 SECURITY_GROUPS = 'sshable'
 INSTANCE_TYPE = 'm2.4xlarge'
@@ -60,10 +59,7 @@ op.add_option('-m', '--max-size', dest='max_size', default=MAX_SIZE,
               help='The maximum allowable number of simultaneous instances')
 (options, args) = op.parse_args()
 
-#for option in vars(options).items(): set_options(*option)
 opt.update(vars(options))
-print opt
-import sys; sys.exit(0)
 
 from autoscale_parser import EC2RegionConnection
 from boto import connect_s3
@@ -79,13 +75,11 @@ ec2_conn = EC2RegionConnection(region=options.region)
 lastInQueue = None
 intervals = []
 while True:
-    #group = autoscale.get_all_groups(names=[options.group])[0]
     instances = ec2_conn.get_tagged_instances()
-    #inqueue = len([k for k in bucket.list(QUEUES[options.group])]) - 1 #because it lists itself, #lame
     inqueue = len([k for k in bucket.list(QUEUES[options.tag])]) - 1 #because it lists itself, #lame
 
     if lastInQueue is not None and lastInQueue != inqueue:
-        delta = (lastInQueue - inqueue) 
+        delta = (lastInQueue - inqueue)
         intervals += [(mins, delta * 250)]
         avg = reduce(lambda x, y: x + y, map(lambda x: float(x[1])/float(x[0]*60), intervals))/len(intervals);
         rate = ", %.3f docs/sec; %d in the last %d minute(s)" % (avg, delta * 250, mins)
@@ -93,22 +87,25 @@ while True:
         rate = ""
 
 
-    #numinstances = len([i for i in group.instances]) # stupid resultset object
     numinstances = len(instances)
 
-    events_per_instance = (float(inqueue) / float(numinstances))
+    events_per_instance = float(inqueue) / float(numinstances) if numinstances else 9999
     above_threshold =  events_per_instance > options.threshold
 
-    #if group.max_size > numinstances and above_threshold:
-    if options.max_size > numinstances and above_threshold:
+    #if (options.max_size > numinstances and above_threshold) or events_per_instance < 0:
+    if (options.max_size > numinstances and above_threshold):
         currinstances = numinstances
-        #while (float(inqueue) / float(currinstances)) > options.threshold and currinstances < group.max_size:
-        while (float(inqueue) / float(currinstances)) > options.threshold and currinstances < options.max_size:
-            autoscale.execute_policy('scale_up', options.group)
+        #ratio = float(inqueue) / float(currinstances) if currinstances else -1
+        #while ratio < 0 or (ratio > options.threshold and currinstances < options.max_size):
+        ratio = float(inqueue) / float(currinstances) if currinstances else 9999
+        while (ratio > options.threshold and currinstances < options.max_size):
+            ec2_conn.add_instances(1)
             currinstances += 1
-        print "[%s %s] Scaled up to %d (%d in queue%s)" % (group.name, datetime.today().isoformat(' '), currinstances, inqueue, rate) 
+            ratio = float(inqueue) / float(currinstances) if currinstances else 9999
+
+        print "[%s %s] Scaled up to %d (%d in queue%s)" % (options.tag, datetime.today().isoformat(' '), currinstances, inqueue, rate)
     else:
-        print "[%s %s] Just chillin' (%d in queue, %d instances%s)" % (group.name, datetime.today().isoformat(' '), inqueue, numinstances, rate)
+        print "[%s %s] Just chillin' (%d in queue, %d instances%s)" % (options.tag, datetime.today().isoformat(' '), inqueue, numinstances, rate)
 
     if inqueue == lastInQueue:
         mins += 1
