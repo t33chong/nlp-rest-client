@@ -5,39 +5,29 @@ from optparse import OptionParser
 from time import sleep
 import traceback
 
-COUNT = 0
-REGION = 'us-west-2'
-PRICE = '0.300'
-AMI = 'parser-140117c'
-KEY = 'data-extraction'
-SECURITY_GROUPS = 'sshable'
-INSTANCE_TYPE = 'm2.4xlarge'
-TAG = 'parser'
+# These values are set by autoscale_monitor.py
+opt = {
+        'region': None,
+        'price': None,
+        'ami': None,
+        'count': None,
+        'key': None,
+        'sec': None,
+        'type': None,
+        'tag': None,
+        'threshold': None,
+        'max_size': None
+      }
 
-op = OptionParser()
-op.add_option('-r', '--region', dest='region', default=REGION,
-              help='The EC2 region to connect to')
-op.add_option('-p', '--price', dest='price', default=PRICE,
-              help='The maximum bid price')
-op.add_option('-a', '--ami', dest='ami', default=AMI,
-              help='The AMI to use')
-op.add_option('-c', '--count', dest='count', default=COUNT, type='int',
-              help='The number of instances desired')
-op.add_option('-k', '--key', dest='key', default=KEY,
-              help='The name of the key pair')
-op.add_option('-s', '--security-groups', dest='sec', default=SECURITY_GROUPS,
-              help='The security groups with which to associate instances')
-op.add_option('-i', '--instance-type', dest='type', default=INSTANCE_TYPE,
-              help='The type of instance to run')
-op.add_option('-t', '--tag', dest='tag', default=TAG,
-              help='The tag name to operate over')
-(opt, args) = op.parse_args()
+#def set_options(key, value):
+#    opt[key] = value
 
 class EC2RegionConnection(object):
     """
     A connection to a specified EC2 region.
     """
-    def __init__(self, region=opt.region):
+    #def __init__(self, region):
+    def __init__(self, region=opt['region']):
         """
         Open a boto.ec2.connection.EC2Connection object.
 
@@ -47,6 +37,8 @@ class EC2RegionConnection(object):
         self.conn = connect_to_region(region)
 
     def _request_instances(self, count):
+    #def _request_instances(self, price, image_id, count, key_name,
+    #                       security_groups, instance_type):
         """
         Request spot instances.
 
@@ -56,12 +48,18 @@ class EC2RegionConnection(object):
         :rtype: boto.ec2.instance.Reservation
         :return: The Reservation object representing the spot instance request
         """
-        return self.conn.request_spot_instances(price=opt.price,
-                                                image_id=opt.ami,
+        if not isinstance(opt['sec'], list):
+            opt['sec'] = opt['sec'].split(',')
+        #return self.conn.request_spot_instances(price=price, image_id=image_id,
+        #                                        count=count, key_name=key_name,
+        #                                        security_groups=security_groups,
+        #                                        instance_type=instance_type)
+        return self.conn.request_spot_instances(price=opt['price'],
+                                                image_id=opt['ami'],
                                                 count=count,
-                                                key_name=opt.key,
-                                                security_groups=opt.sec.split(','),
-                                                instance_type=opt.type)
+                                                key_name=opt['key'],
+                                                security_groups=opt['sec'],
+                                                instance_type=opt['type'])
 
     def _get_instance_ids(self, reservation):
         """
@@ -103,7 +101,7 @@ class EC2RegionConnection(object):
         :rtype: boolean
         :return: A boolean indicating whether tagging was successful
         """
-        tags = {'Name': opt.tag}
+        tags = {'Name': opt['tag']}
         return self.conn.create_tags(instance_ids, tags)
 
     def add_instances(self, count):
@@ -146,6 +144,7 @@ class EC2RegionConnection(object):
         return True
 
     def get_tagged_instances(self):
+    #def get_tagged_instances(self, tag):
         """
         Get pending or running instances labeled with the tags specified in the
         options.
@@ -153,19 +152,23 @@ class EC2RegionConnection(object):
         :rtype: list
         :return: A list of strings representing the IDs of the tagged instances
         """
-        filters = {'tag:Name': opt.tag}
+        #filters = {'tag:Name': tag}
+        filters = {'tag:Name': opt['tag']}
         return [instance.id for reservation in
                 self.conn.get_all_instances(filters=filters) for instance in
                 reservation.instances if instance.state_code < 32]
 
 if __name__ == '__main__':
+    import sys; sys.exit(0)
+
     c = EC2RegionConnection()
 
-    if opt.count:
-        difference = opt.count - len(c.get_tagged_instances())
+    if opt['count']:
+        difference = opt['count'] - len(c.get_tagged_instances())
         if difference > 0:
             c.add_instances(difference)
 
     # Get tagged instances
-    tagged_instances = c.get_tagged_instances()
+    tagged_instances = c.get_tagged_instances(opt['tag'])
     print tagged_instances # debug
+

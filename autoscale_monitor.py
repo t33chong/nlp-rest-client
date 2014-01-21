@@ -1,8 +1,6 @@
-from boto import connect_s3
-from boto.ec2.autoscale import connect_to_region
+#from autoscale_parser import set_options
+from autoscale_parser import opt
 from optparse import OptionParser
-from time import sleep
-from datetime import datetime
 
 """
 Monitors the workload in specific intervals and scales up or down
@@ -11,31 +9,80 @@ We need this script for two reasons:
 2) You can't create metric alarms for EC2 instances hosted outside of us-east-1
 """
 
-GROUP_NAME = 'parser'
+#GROUP_NAME = 'parser'
+#THRESHOLD = 10
+
+#parser = OptionParser()
+#parser.add_option('-t', '--threshold', type='int', dest='threshold', default=THRESHOLD,
+#                  help='Acceptable amount of events per process we will tolerate being backed up on')
+#parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
+#                  help='The autoscale group name to operate over')
+#
+#(options, args) = parser.parse_args()
+
+COUNT = 0
+REGION = 'us-west-2'
+PRICE = '0.300'
+AMI = 'parser-140117c'
+KEY = 'data-extraction'
+SECURITY_GROUPS = 'sshable'
+INSTANCE_TYPE = 'm2.4xlarge'
+TAG = 'parser'
 THRESHOLD = 10
+MAX_SIZE = 4
 
 QUEUES = {
     'parser': 'text_events',
     'data_extraction': 'data_events'
 }
 
-parser = OptionParser()
-parser.add_option('-t', '--threshold', type='int', dest='threshold', default=THRESHOLD,
-                  help='Acceptable amount of events per process we will tolerate being backed up on')
-parser.add_option('-g', '--group', dest='group', default=GROUP_NAME,
-                  help='The autoscale group name to operate over')
+op = OptionParser()
+op.add_option('-r', '--region', dest='region', default=REGION,
+              help='The EC2 region to connect to')
+op.add_option('-p', '--price', dest='price', default=PRICE,
+              help='The maximum bid price')
+op.add_option('-a', '--ami', dest='ami', default=AMI,
+              help='The AMI to use')
+op.add_option('-c', '--count', dest='count', default=COUNT, type='int',
+              help='The number of instances desired')
+op.add_option('-k', '--key', dest='key', default=KEY,
+              help='The name of the key pair')
+op.add_option('-s', '--security-groups', dest='sec', default=SECURITY_GROUPS,
+              help='The security groups with which to associate instances')
+op.add_option('-i', '--instance-type', dest='type', default=INSTANCE_TYPE,
+              help='The type of instance to run')
+op.add_option('-t', '--tag', dest='tag', default=TAG,
+              help='The tag name to operate over')
+op.add_option('-e', '--threshold', dest='threshold', default=THRESHOLD,
+              help='Acceptable number of events per process we will tolerate as' +
+                   'backlog')
+op.add_option('-m', '--max-size', dest='max_size', default=MAX_SIZE,
+              help='The maximum allowable number of simultaneous instances')
+(options, args) = op.parse_args()
 
-(options, args) = parser.parse_args()
+#for option in vars(options).items(): set_options(*option)
+opt.update(vars(options))
+print opt
+import sys; sys.exit(0)
+
+from autoscale_parser import EC2RegionConnection
+from boto import connect_s3
+from boto.ec2.autoscale import connect_to_region
+from time import sleep
+from datetime import datetime
 
 conn = connect_s3()
 bucket = conn.get_bucket('nlp-data')
 autoscale = connect_to_region('us-west-2')
+ec2_conn = EC2RegionConnection(region=options.region)
 
 lastInQueue = None
 intervals = []
 while True:
-    group = autoscale.get_all_groups(names=[options.group])[0]
-    inqueue = len([k for k in bucket.list(QUEUES[options.group])]) - 1 #because it lists itself, #lame
+    #group = autoscale.get_all_groups(names=[options.group])[0]
+    instances = ec2_conn.get_tagged_instances()
+    #inqueue = len([k for k in bucket.list(QUEUES[options.group])]) - 1 #because it lists itself, #lame
+    inqueue = len([k for k in bucket.list(QUEUES[options.tag])]) - 1 #because it lists itself, #lame
 
     if lastInQueue is not None and lastInQueue != inqueue:
         delta = (lastInQueue - inqueue) 
@@ -46,14 +93,17 @@ while True:
         rate = ""
 
 
-    numinstances = len([i for i in group.instances]) # stupid resultset object
+    #numinstances = len([i for i in group.instances]) # stupid resultset object
+    numinstances = len(instances)
 
     events_per_instance = (float(inqueue) / float(numinstances))
     above_threshold =  events_per_instance > options.threshold
 
-    if group.max_size > numinstances and above_threshold:
+    #if group.max_size > numinstances and above_threshold:
+    if options.max_size > numinstances and above_threshold:
         currinstances = numinstances
-        while (float(inqueue) / float(currinstances)) > options.threshold and currinstances < group.max_size:
+        #while (float(inqueue) / float(currinstances)) > options.threshold and currinstances < group.max_size:
+        while (float(inqueue) / float(currinstances)) > options.threshold and currinstances < options.max_size:
             autoscale.execute_policy('scale_up', options.group)
             currinstances += 1
         print "[%s %s] Scaled up to %d (%d in queue%s)" % (group.name, datetime.today().isoformat(' '), currinstances, inqueue, rate) 
