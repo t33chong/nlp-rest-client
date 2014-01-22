@@ -101,8 +101,8 @@ class EC2RegionConnection(object):
         :type count: int
         :param count: The number of instances to add
 
-        :rtype: boolean
-        :return: A boolean indicating whether adding instances was successful
+        :rtype: int
+        :return: An integer indicating the number of active tagged instances
         """
         try:
             # Create spot instances
@@ -112,8 +112,7 @@ class EC2RegionConnection(object):
             self._tag_instances(instance_ids)
         except:
             traceback.print_exc()
-            return False
-        return True
+        return len(self.get_tagged_instances())
 
     def terminate(self, instance_ids):
         """

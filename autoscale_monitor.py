@@ -1,3 +1,4 @@
+from __future__ import division
 from autoscale_parser import opt
 from optparse import OptionParser
 
@@ -64,32 +65,38 @@ ec2_conn = EC2RegionConnection(region=options.region)
 lastInQueue = None
 intervals = []
 while True:
-    instances = ec2_conn.get_tagged_instances()
     inqueue = len([k for k in bucket.list(QUEUES[options.tag])]) - 1 #because it lists itself, #lame
+
+    if not inqueue:
+        print "[%s %s] Just chillin' (%d in queue)" % (options.tag, datetime.today().isoformat(' '), inqueue)
+        sleep(60)
+        continue
+
+    instances = ec2_conn.get_tagged_instances()
+    numinstances = len(instances)
+
+    if not numinstances:
+        numinstances = ec2_conn.add_instances(1)
+        print "[%s %s] Scaled up to %d (%d in queue)" % (options.tag, datetime.today().isoformat(' '), numinstances, inqueue)
+        continue
 
     if lastInQueue is not None and lastInQueue != inqueue:
         delta = (lastInQueue - inqueue)
         intervals += [(mins, delta * 250)]
-        avg = reduce(lambda x, y: x + y, map(lambda x: float(x[1])/float(x[0]*60), intervals))/len(intervals);
+        avg = reduce(lambda x, y: x + y, map(lambda x: x[1]/(x[0]*60), intervals))/len(intervals);
         rate = ", %.3f docs/sec; %d in the last %d minute(s)" % (avg, delta * 250, mins)
     else:
         rate = ""
 
-
-    numinstances = len(instances)
-
-    events_per_instance = float(inqueue) / float(numinstances) if numinstances else 9999
+    events_per_instance = inqueue / numinstances
     above_threshold =  events_per_instance > options.threshold
 
     if (options.max_size > numinstances and above_threshold):
-        currinstances = numinstances
-        ratio = float(inqueue) / float(currinstances) if currinstances else 9999
-        while (ratio > options.threshold and currinstances < options.max_size):
-            ec2_conn.add_instances(1)
-            currinstances += 1
-            ratio = float(inqueue) / float(currinstances) if currinstances else 9999
-
-        print "[%s %s] Scaled up to %d (%d in queue%s)" % (options.tag, datetime.today().isoformat(' '), currinstances, inqueue, rate)
+        ratio = inqueue / numinstances
+        while (ratio > options.threshold and numinstances < options.max_size):
+            numinstances = ec2_conn.add_instances(1)
+            ratio = inqueue / numinstances
+        print "[%s %s] Scaled up to %d (%d in queue%s)" % (options.tag, datetime.today().isoformat(' '), numinstances, inqueue, rate)
     else:
         print "[%s %s] Just chillin' (%d in queue, %d instances%s)" % (options.tag, datetime.today().isoformat(' '), inqueue, numinstances, rate)
 
