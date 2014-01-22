@@ -25,7 +25,6 @@ XML_DIR = '/tmp/xml/'
 PACKAGE_DIR = "/tmp/event_packages/"
 BUCKET_NAME = 'nlp-data'
 REGION = 'us-west-2'
-DESIRED_CAPACITY = 4
 
 s3_conn = connect_s3()
 bucket = s3_conn.get_bucket(BUCKET_NAME)
@@ -97,13 +96,12 @@ while True:
         added = add_files()
         # shut this instance down if we have an empty queue and we're above desired capacity
         if not added and len(os.listdir(XML_DIR)) == 0 and is_newest_older_than(15):
-            instances = ec2_conn.get_tagged_instances()
-            if DESIRED_CAPACITY < len(instances):
-                print "[%s] Scaling down, shutting down." % hostname
-                current_id = get_instance_metadata()['instance-id']
-                if len(filter(lambda x: x == current_id, instances)) == 1:
-                    ec2_conn.terminate([current_id])
-                    sys.exit()
+            instances = ec2_conn.get_tagged_instances('parser')
+            print "[%s] Scaling down, shutting down." % hostname
+            current_id = get_instance_metadata()['instance-id']
+            if len(filter(lambda x: x == current_id, instances)) == 1:
+                ec2_conn.terminate([current_id])
+                sys.exit()
 
     print "[%s] %d text files in queue..." % (hostname, inqueue)
 
