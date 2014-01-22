@@ -78,9 +78,11 @@ def add_files():
 def is_newest_older_than(duration):
     """Return True if the most recently modified file in TEXT_DIR is older than
     a given number of minutes"""
-    newest_file, modified_time = chrono_sort(TEXT_DIR)[-1]
-    if (time() - modified_time) / 60 > duration:
-        return True
+    ordered = chrono_sort(TEXT_DIR)
+    if ordered:
+        newest_file, modified_time = ordered[-1]
+        if (time() - modified_time) / 60 > duration:
+            return True
     return False
 
 while True:
