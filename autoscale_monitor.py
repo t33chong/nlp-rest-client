@@ -42,10 +42,10 @@ op.add_option('-i', '--instance-type', dest='type', default=INSTANCE_TYPE,
               help='The type of instance to run')
 op.add_option('-t', '--tag', dest='tag', default=TAG,
               help='The tag name to operate over')
-op.add_option('-e', '--threshold', dest='threshold', default=THRESHOLD,
+op.add_option('-e', '--threshold', dest='threshold', default=THRESHOLD, type='int',
               help='Acceptable number of events per process we will tolerate as' +
                    'backlog')
-op.add_option('-m', '--max-size', dest='max_size', default=MAX_SIZE,
+op.add_option('-m', '--max-size', dest='max_size', default=MAX_SIZE, type='int',
               help='The maximum allowable number of simultaneous instances')
 (options, args) = op.parse_args()
 
@@ -66,17 +66,18 @@ lastInQueue = None
 intervals = []
 while True:
     inqueue = len([k for k in bucket.list(QUEUES[options.tag])]) - 1 #because it lists itself, #lame
-
-    if not inqueue:
-        print "[%s %s] Just chillin' (%d in queue)" % (options.tag, datetime.today().isoformat(' '), inqueue)
-        sleep(60)
-        continue
-
     instances = ec2_conn.get_tagged_instances()
     numinstances = len(instances)
 
+    if not inqueue:
+        print "[%s %s] Just chillin' (%d in queue, %d instances)" % (options.tag, datetime.today().isoformat(' '), inqueue, numinstances)
+        sleep(60)
+        continue
+
     if not numinstances:
-        numinstances = ec2_conn.add_instances(1)
+        optimal = inqueue // options.threshold
+        instances_to_add = optimal if optimal <= options.max_size else options.max_size
+        numinstances = ec2_conn.add_instances(instances_to_add)
         print "[%s %s] Scaled up to %d (%d in queue)" % (options.tag, datetime.today().isoformat(' '), numinstances, inqueue)
         continue
 
