@@ -12,7 +12,7 @@ We need this script for two reasons:
 COUNT = 0
 REGION = 'us-west-2'
 PRICE = '0.300'
-AMI = 'ami-d8debfe8'
+AMI = 'ami-a43c5c94'
 KEY = 'data-extraction'
 SECURITY_GROUPS = 'sshable'
 INSTANCE_TYPE = 'm2.4xlarge'
