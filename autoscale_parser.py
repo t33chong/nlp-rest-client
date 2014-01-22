@@ -132,15 +132,18 @@ class EC2RegionConnection(object):
             return False
         return True
 
-    def get_tagged_instances(self):
+    def get_tagged_instances(self, tag=opt['tag']):
         """
         Get pending or running instances labeled with the tags specified in the
         options.
 
+        :type tag: string
+        :param tag: A string representing the tag name to operate over
+
         :rtype: list
         :return: A list of strings representing the IDs of the tagged instances
         """
-        filters = {'tag:Name': opt['tag']}
+        filters = {'tag:Name': tag}
         return [instance.id for reservation in
                 self.conn.get_all_instances(filters=filters) for instance in
                 reservation.instances if instance.state_code < 32]
