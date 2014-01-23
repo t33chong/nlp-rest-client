@@ -76,7 +76,7 @@ class EC2RegionConnection(object):
                 #print 'appending %s' % instance_id
                 instance_ids.append(instance_id)
             if len(instance_ids) < len(reservation):
-                print 'waiting for instances to launch...'
+                print 'waiting for %d instances to launch...' % len(reservation)
                 continue
             break
         return instance_ids
