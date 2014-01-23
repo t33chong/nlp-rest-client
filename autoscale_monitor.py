@@ -54,8 +54,9 @@ opt.update(vars(options))
 from autoscale_parser import EC2RegionConnection
 from boto import connect_s3
 from boto.ec2.autoscale import connect_to_region
-from time import sleep
 from datetime import datetime
+from math import ceil
+from time import sleep
 
 conn = connect_s3()
 bucket = conn.get_bucket('nlp-data')
@@ -66,7 +67,7 @@ lastInQueue = None
 intervals = []
 while True:
     inqueue = len([k for k in bucket.list(QUEUES[options.tag])]) - 1 #because it lists itself, #lame
-    instances = ec2_conn.get_tagged_instances()
+    instances = ec2_conn.get_tagged_instances(options.tag)
     numinstances = len(instances)
 
     if not inqueue:
@@ -75,9 +76,11 @@ while True:
         continue
 
     if not numinstances:
-        optimal = inqueue // options.threshold
+        optimal = int(ceil(inqueue / options.threshold))
         instances_to_add = optimal if optimal <= options.max_size else options.max_size
-        numinstances = ec2_conn.add_instances(instances_to_add)
+        ec2_conn.add_instances(instances_to_add)
+        instances = ec2_conn.get_tagged_instances(options.tag)
+        numinstances = len(instances)
         print "[%s %s] Scaled up to %d (%d in queue)" % (options.tag, datetime.today().isoformat(' '), numinstances, inqueue)
         continue
 
@@ -95,7 +98,12 @@ while True:
     if (options.max_size > numinstances and above_threshold):
         ratio = inqueue / numinstances
         while (ratio > options.threshold and numinstances < options.max_size):
-            numinstances = ec2_conn.add_instances(1)
+            optimal = int(ceil(inqueue / options.threshold)) - numinstances
+            allowed = options.max_size - numinstances
+            instances_to_add = optimal if optimal <= allowed else allowed
+            ec2_conn.add_instances(instances_to_add)
+            instances = ec2_conn.get_tagged_instances(options.tag)
+            numinstances = len(instances)
             ratio = inqueue / numinstances
         print "[%s %s] Scaled up to %d (%d in queue%s)" % (options.tag, datetime.today().isoformat(' '), numinstances, inqueue, rate)
     else:
