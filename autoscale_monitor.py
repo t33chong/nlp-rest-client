@@ -53,14 +53,12 @@ opt.update(vars(options))
 
 from autoscale_parser import EC2RegionConnection
 from boto import connect_s3
-from boto.ec2.autoscale import connect_to_region
 from datetime import datetime
 from math import ceil
 from time import sleep
 
 conn = connect_s3()
 bucket = conn.get_bucket('nlp-data')
-autoscale = connect_to_region('us-west-2')
 ec2_conn = EC2RegionConnection(region=options.region)
 
 lastInQueue = None
