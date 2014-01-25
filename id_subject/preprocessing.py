@@ -12,6 +12,8 @@ def preprocess(text):
 
 def to_list(terms):
     """Ensure that object is a list"""
+    if terms is None:
+        terms = []
     if isinstance(terms, (str, unicode)):
         terms = [terms]
     return terms
@@ -23,6 +25,8 @@ def build_dict_with_original_values(terms):
     Solr fields, and count the keys of the resulting dictionary as the set of
     terms to iterate over and pass to the check functions as the 'candidate'
     argument."""
+    if not terms:
+        return {}
     d = defaultdict(list)
     for term in terms:
         normalized = preprocess(term)
@@ -35,6 +39,8 @@ def build_dict_for_simple_lookup(terms):
     """Given a list of terms, preprocess them and return a dict containing the
     normalized terms as keys, and True as values. Run this on lists of terms
     that require only a binary check, within BinaryField()"""
+    if not terms:
+        return {}
     return dict((preprocess(term), 1.0) for term in terms)
 
 def build_dict_with_term_counts(terms):
@@ -42,6 +48,8 @@ def build_dict_with_term_counts(terms):
     normalized terms as keys, and their frequencies in the list as values. Run
     this on lists of terms taken from individual Solr fields within
     TermFreqField() and store the output as 'd'."""
+    if not terms:
+        return {}
     d = defaultdict(int)
     for term in terms:
         normalized = preprocess(term)
