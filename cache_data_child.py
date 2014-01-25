@@ -1,5 +1,5 @@
 from nlp_services.syntax import AllNounPhrasesService, AllVerbPhrasesService, HeadsService
-from nlp_services.discourse.entities import CoreferenceCountsService, EntityCountsService, WpEntityCountsService, CombinedEntityCountsService
+from nlp_services.discourse.entities import CoreferenceCountsService, EntityCountsService
 from nlp_services.discourse.sentiment import DocumentSentimentService, DocumentEntitySentimentService, WpDocumentEntitySentimentService
 from nlp_services.caching import use_caching
 from multiprocessing import Pool

@@ -5,8 +5,6 @@
         "HeadsService",
         "CoreferenceCountsService",
         "EntityCountsService",
-        "WpEntityCountsService",
-        "CombinedEntityCountsService",
         "DocumentSentimentService",
         "DocumentEntitySentimentService",
         "WpDocumentEntitySentimentService"
