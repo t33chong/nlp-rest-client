@@ -1,20 +1,24 @@
 {
     "services": [
+        "AllNounPhrasesService",
         "AllVerbPhrasesService",
         "HeadsService",
-	"WpEntityCountsService",
-	"EntityCountsService",
-	"DocumentEntitySentimentService",
-	"WpDocumentEntitySentimentService"
+        "CoreferenceCountsService",
+        "EntityCountsService",
+        "WpEntityCountsService",
+        "CombinedEntityCountsService",
+        "DocumentSentimentService",
+        "DocumentEntitySentimentService",
+        "WpDocumentEntitySentimentService"
                 ],
     "wiki-services": [
         "TopEntitiesService", 
-	"EntityDocumentCountsService", 
-	"TopHeadsService", 
-	"WpTopEntitiesService", 
-	"WpEntityDocumentCountsService",
-	"WikiEntitySentimentService",
-	"WpWikiEntitySentimentService",
-	"AllEntitiesSentimentAndCountsService"
+        "EntityDocumentCountsService", 
+        "TopHeadsService", 
+        "WpTopEntitiesService", 
+        "WpEntityDocumentCountsService",
+        "WikiEntitySentimentService",
+        "WpWikiEntitySentimentService",
+        "AllEntitiesSentimentAndCountsService"
     		]
 }

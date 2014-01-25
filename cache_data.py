@@ -7,8 +7,6 @@ import time
 import re
 from boto import connect_s3
 from subprocess import Popen
-from nlp_client.caching import useCaching
-from nlp_client.services import *
 
 workers = int(sys.argv[1])
 BUCKET = connect_s3().get_bucket('nlp-data')

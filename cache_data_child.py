@@ -1,5 +1,7 @@
-from nlp_client.services import *
-from nlp_client import caching
+from nlp_services.syntax import AllNounPhrasesService, AllVerbPhrasesService, HeadsService
+from nlp_services.discourse.entities import CoreferenceCountsService, EntityCountsService, WpEntityCountsService, CombinedEntityCountsService
+from nlp_services.discourse.sentiment import DocumentSentimentService, DocumentEntitySentimentService, WpDocumentEntitySentimentService
+from nlp_services.caching import use_caching
 from multiprocessing import Pool
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
@@ -17,7 +19,7 @@ BUCKET = boto.connect_s3().get_bucket('nlp-data')
 service_file = sys.argv[2] if len(sys.argv) > 2 else 'services-config.json'
 SERVICES = json.loads(open(service_file).read())['services']
 
-caching.useCaching(perServiceCaching=dict([(service+'.get', {'write_only': True}) for service in SERVICES]))
+use_caching(per_service_cache=dict([(service+'.get', {'write_only': True}) for service in SERVICES]))
 
 def process_file(filename):
     if filename.strip() == '':
