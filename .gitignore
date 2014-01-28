@@ -9,3 +9,6 @@ WikiaSolr/*
 *.csv
 *.model
 .idea/*
+*.bak
+*.txt
+wiki_recommender/*
