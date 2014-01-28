@@ -5,7 +5,7 @@ from boto.ec2.autoscale import ScalingPolicy
 
 from optparse import OptionParser
 
-AMI = 'ami-6cab355c'
+AMI = 'ami-f48c14c4'
 GROUP_NAME = 'parser'
 DEFAULT_MIN = 4
 DEFAULT_MAX = 20
@@ -50,7 +50,9 @@ def create_group():
                              instance_type='m2.4xlarge',
                              security_groups=['sshable'])
 
-    conn.create_launch_configuration(lc)
+    if lcname not in [c.name for c in
+                      conn.get_all_launch_configurations(names=[lcname])]:
+        conn.create_launch_configuration(lc)
 
     min = options.min if options.min is not None else DEFAULT_MIN
     max = options.max if options.max is not None else DEFAULT_MAX
