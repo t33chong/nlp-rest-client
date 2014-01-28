@@ -16,9 +16,8 @@ while True:
         wids = [prefix.name.split('/')[-2] for prefix in connect_s3().get_bucket('nlp-data').list(prefix='xml/', delimiter='/') if isinstance(prefix, Prefix)]
         random.shuffle(wids)
     else:
-        wids = [str(int(id)) for id in open('topwams.txt')]
+        wids = [str(int(id)) for id in open('top5k.txt')]
         random.shuffle(wids)
-        wids = wids[:1000]
     print "Working on %d wids" % len(wids)
 
     processes = []

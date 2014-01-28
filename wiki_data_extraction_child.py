@@ -3,8 +3,12 @@ import traceback
 import os
 import json
 from boto import connect_s3
-from nlp_client.services import *
-from nlp_client.caching import useCaching
+from nlp_services.caching import use_caching
+from nlp_services.syntax import WikiToPageHeadsService, HeadsCountService, TopHeadsService
+from nlp_services.discourse.entities import WikiEntitiesService, WpWikiEntitiesService, CombinedWikiEntitiesService, TopEntitiesService, WpTopEntitiesService, CombinedTopEntitiesService, WikiPageEntitiesService, WpWikiPageEntitiesService, CombinedWikiPageEntitiesService, EntityDocumentCountsService, WpEntityDocumentCountsService, CombinedDocumentEntityCountsService, WikiPageToEntitiesService, WpPageToEntitiesService, CombinedPageToEntitiesService
+from nlp_services.discourse import AllEntitiesSentimentAndCountsService
+from nlp_services.discourse.sentiment import WikiEntitySentimentService, WpWikiEntitySentimentService
+from title_confirmation.wikia import AllTitlesService, RedirectsService
 
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
@@ -13,10 +17,7 @@ service_file = 'services-config.json'
 SERVICES = json.loads(open(service_file).read())['wiki-services']
 
 caching_dict = dict([(service+'.get', {'write_only': True}) for service in SERVICES])
-useCaching(perServiceCaching=caching_dict)
-
-if len(sys.argv) > 2:
-    use_multiprocessing(num_cores=int(sys.argv[2]))
+use_caching(per_service_cache=caching_dict)
 
 wid = sys.argv[1]
 try:
@@ -25,7 +26,7 @@ try:
             print service
             getattr(sys.modules[__name__], service)().get(wid)
             caching_dict[service+'.get'] = {'dont_compute': True}  # DRY fool!
-            useCaching(perServiceCaching=caching_dict)
+            use_caching(per_service_caching=caching_dict)
         except KeyboardInterrupt:
             sys.exit()
         except Exception as e:
