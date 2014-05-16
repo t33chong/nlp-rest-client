@@ -91,7 +91,7 @@ while True:
             os.mkdir(directory)
 
     inqueue = len(os.listdir(TEXT_DIR))
-    
+
     if inqueue < 10:
         added = add_files()
         # shut this instance down if we have an empty queue and we're above desired capacity
@@ -123,15 +123,17 @@ while True:
 
     for xmlfile in xmlfiles:
         key = Key(bucket)
-        new_key = '/xml/%s/%s.xml' % tuple(xmlfile.replace('.xml', '').split('_'))
-        key.key = new_key
-        data_events += [new_key]
+        id_data = tuple(xmlfile.replace('.xml', '').split('_'))
         xmlfilename = XML_DIR+xmlfile
-        key.set_contents_from_filename(xmlfilename)
+        if len(id_data) == 2:
+            new_key = '/xml/%s/%s.xml' % id_data
+            key.key = new_key
+            data_events += [new_key]
+            key.set_contents_from_filename(xmlfilename)
         os.remove(xmlfilename)
 
     print "[%s] Uploaded %d files (rate of %.2f docs/sec)" % (hostname, len(xmlfiles), float(len(xmlfiles))/30.0)
-        
+
     # write events to a new file
     event_key = Key(bucket)
     event_key.key = '/data_events/'+SIG
